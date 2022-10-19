@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+
+from os import name
+import json
+import argparse
+import urllib3
+from multiprocessing import Manager
+import concurrent.futures
+
+from constants import *
+from umnet_utils import *
+from aruba_query import *
+
+
+def aruba_wifi_client(wc, args, wc_api):
+    mac_found_dict = {}
+    mac_search = user_search = "NONE"
+
+    command = "show+global-user-table+list"
+    response = aruba_show_command(wc, command, wc_api)
+
+    if args.mac != "NONE":
+        mac_search = mac_to_colon_separated(args.mac).lower()
+
+    if args.user != "NONE":
+        user_search = args.user.lower()
+
+    for user in response["Global Users"]:
+        if user["MAC"] == mac_search or user["Name"] == user_search:
+            print("{},{},{},{},{},{},{},{},{}".format(user["MAC"], user["Name"], user["IP"], user["Essid"], user["Bssid"], user["AP name"], user["Phy"], user["Role"], user["Current switch"]))
+            mac_found_dict[user["MAC"]] = True
+
+    if args.remove and mac_found_dict[mac_search]:
+        uid = wc_api[wc].uid
+        cookie = dict(SESSION=uid)
+        user_del = requests.post(
+            url="https://" + wc + ":4343/v1/configuration/object/aaa_user_delete?config_path=%2Fmm&UIDARUBA=" + uid,
+            data=json.dumps({"macaddr": mac_search}),
+            headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
+            cookies=cookie,
+            verify=False,
+        )
+        if user_del.ok:
+            print("Mac {} removed from {}".format(mac_search, wc))
+
+
+def main():
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    # CLI parser for the command
+    parser = argparse.ArgumentParser(description="Aruba Wifi User Search.")
+
+    # Get input from CLI
+    parser.add_argument(
+        "-u",
+        "--user",
+        default="NONE",
+        help="Enter the username to search for",
+    )
+    parser.add_argument(
+        "-m",
+        "--mac",
+        default="NONE",
+        help="Enter the mac address to search for",
+    )
+    parser.add_argument(
+        "-r",
+        "--remove",
+        action="store_true",
+        default=False,
+        help="Remove the user from the controllers, must use mac address",
+    )
+
+    manager = Manager()
+    wc_api = manager.dict()
+
+    args = parser.parse_args()
+
+    # determine dc/mc to use based on args
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for wc in mobility_controllers:
+            executor.submit(get_aruba_api_token, wc, password, wc_api)
+
+    print("mac,user,ip,ssid,bssid,ap,band,role,controller")
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for wc in mobility_controllers:
+            executor.submit(aruba_wifi_client, wc, args, wc_api)
+
+
+if __name__ == "__main__":
+    main()

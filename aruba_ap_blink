@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+
+from os import path
+import sys
+import argparse
+import time
+import json
+from multiprocessing import Manager
+import concurrent.futures
+
+from umnet_utils import *
+from aruba_query import *
+from constants import *
+
+
+
+def blink_ap(wc, wc_api, args):
+    ap_list = {}
+
+    command = "show+ap+database+long"
+    response = aruba_show_command(wc, command, wc_api)
+    # parse json response and update the class
+    if args.name:
+        ap_to_blink = args.name
+        for ap in response["AP Database"]:
+            if ap["Status"].startswith("Up") and ap["Switch IP"] == wc:
+                tmp_ap = ArubaAP(ap["Name"])
+                tmp_ap.setMac(ap["Wired MAC Address"])
+                tmp_ap.setGroup(ap["Group"])
+                ap_list.setdefault(ap["Name"], tmp_ap)
+    elif args.mac:
+        ap_to_blink = mac_to_colon_separated(args.mac).lower()
+        for ap in response["AP Database"]:
+            if ap["Status"].startswith("Up") and ap["Switch IP"] == wc:
+                tmp_ap = ArubaAP(ap["Name"])
+                tmp_ap.setMac(ap["Wired MAC Address"])
+                tmp_ap.setGroup(ap["Group"])
+                ap_list.setdefault(ap["Wired MAC Address"], tmp_ap)
+
+    uid = wc_api[wc].uid
+    cookie = dict(SESSION=uid)
+
+    if ap_to_blink in ap_list.keys():
+        if args.blink_on:
+            blink_data = {"wired-mac": ap_list[ap_to_blink].mac, "action_option": "blink"}
+            msg = "Blinking LEDs on " + ap_to_blink
+        elif args.blink_off:
+            blink_data = {"wired-mac": ap_list[ap_to_blink].mac, "action_option": "normal"}
+            msg = "LEDs normal on " + ap_to_blink
+        blink_ap = requests.post(
+            url="https://" + wc + ":4343/v1/configuration/object/ap_leds?config_path=%2Fmm&UIDARUBA=" + uid,
+            data=json.dumps(blink_data),
+            headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
+            cookies=cookie,
+            verify=False,
+        )
+        if blink_ap.ok:
+            print(msg)
+        else:
+            print("API Failure")
+
+
+def main():
+    # CLI parser for the command
+    parser = argparse.ArgumentParser(description="Reboot Aruba AP")
+
+    # Get input from CLI
+    parser.add_argument(
+        "--mac",
+        help="Enter the MAC Address of the AP to reboot",
+    )
+    parser.add_argument(
+        "--name",
+        help="Enter the AP name to reboot",
+    )
+    parser.add_argument(
+        "--blink-on",
+        action="store_true",
+        default=False,
+        help="Turn on LED Blinking",
+    )
+    parser.add_argument(
+        "--blink-off",
+        action="store_true",
+        default=False,
+        help="Turn off LED Blinking",
+    )
+
+    # parse the arguments and print help if there are none
+    if len(sys.argv) == 1:
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+
+    # read CLI into args
+    args = parser.parse_args()
+
+    manager = Manager()
+    wc_api = manager.dict()
+
+    # get the api token for all controllers
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for wc in mobility_controllers:
+            executor.submit(get_aruba_api_token, wc, password, wc_api)
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for wc in mobility_controllers:
+            executor.submit(blink_ap, wc, wc_api, args)
+
+
+if __name__ == "__main__":
+    main()

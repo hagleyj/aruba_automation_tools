@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+
+import concurrent.futures
+import paramiko
+from constants import *
+from umnet_utils import *
+from aruba_query import *
+
+# download the full configs and save them to a text file
+def backup_mc(mc):
+    try:
+        client = paramiko.client.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(
+            mc,
+            username=username,
+            password=password,
+            allow_agent=False,
+            look_for_keys=False,
+        )
+        cli = client.invoke_shell(width=1000)
+        cli.send("no paging \n")
+        cli.send("encrypt disable \n")
+
+        backup = ""
+
+        commands = [
+            "cd /mm",
+            "show configuration effective",
+            "cd /mm/mynode",
+            "show configuration effective",
+        ]
+
+        commands.append("cd " + config_path)
+        commands.append("show configuration effective")
+        for wc in mobility_controllers:
+            commands.append("cd " + wc)
+            commands.append("show configuration effective")
+
+        with open(mc, "w") as output:
+            output.write(backup)
+            output.close()
+
+        cli.shutdown(2)
+        cli.close()
+        client.close()
+    except AuthenticationException:
+        print("Authentication failed, please verify your credentials: %s")
+    except SSHException as sshException:
+        print("Unable to establish SSH connection: %s" % sshException)
+    except BadHostKeyException as badHostKeyException:
+        print("Unable to verify server's host key: %s" % badHostKeyException)
+
+
+def main():
+    # backup aruba mobility controllers
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+            for mc in mobility_controllers:
+                executor.submit(backup_mc, mc)
+
+
+if __name__ == "__main__":
+    main()

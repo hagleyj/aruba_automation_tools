@@ -1,0 +1,268 @@
+#!/usr/bin/env python3
+
+import sys
+import time
+import json
+import argparse
+import concurrent.futures
+from multiprocessing import Manager
+from netmiko import ConnectHandler
+
+from constants import *
+from aruba_query import *
+
+
+def set_ap_config(wc, wc_api, args, config_class):
+
+    get_aruba_config(wc, wc_api, config_class)
+
+    uid = wc_api[wc].uid
+    cookie = dict(SESSION=uid)
+
+    # these commands are work on specific APs
+    if args.ap != "NONE":
+        if args.ap_current:
+            if args.ap in config_class.args.ap.keys():
+                print("Unique SSIDs on " + args.ap + ":")
+                for ssid in config_class.args.ap[args.ap]["virtual_ap"]:
+                    print("  " + ssid["profile-name"])
+            else:
+                print(args.ap + " does not have any unique SSIDs configured")
+
+        if args.ap_ssid_add != "NONE":
+            ssid_add_list = args.ap_ssid_add.split(",")
+            for ssid_vap in ssid_add_list:
+                if ssid_vap in config_class.virtual_ap.keys():
+                    ap_ssid_add_data = {"profile-name": args.ap, "virtual_ap": [{"profile-name": ssid_vap}]}
+                    ap_ssid_add = requests.post(
+                        url="https://" + wc + ":4343/v1/configuration/object/ap_name?config_path=" + config_path + "&UIDARUBA=" + uid,
+                        data=json.dumps(ap_ssid_add_data),
+                        headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
+                        cookies=cookie,
+                        verify=False,
+                    )
+                    if ap_ssid_add.ok:
+                        print("{} add to {} on {}".format(ssid_vap, args.ap, wc))
+                    else:
+                        print("API Failure")
+                else:
+                    print(ssid_vap + " is not a valid VAP")
+
+        if args.ap_ssid_remove != "NONE":
+            ssid_remove_list = args.ap_ssid_remove.split(",")
+            for ssid_vap in ssid_remove_list:
+                if ssid_vap in config_class.virtual_ap.keys():
+                    ap_ssid_remove_data = {"profile-name": args.ap, "virtual_ap": [{"profile-name": ssid_vap}], "_action": "delete"}
+                    ap_ssid_remove = requests.post(
+                        url="https://" + wc + ":4343/v1/configuration/object/ap_name?config_path=" + config_path + "&UIDARUBA=" + uid,
+                        data=json.dumps(ap_ssid_remove_data),
+                        headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
+                        cookies=cookie,
+                        verify=False,
+                    )
+                    if ap_ssid_remove.ok:
+                        print("{} removed from {} on {}".format(ssid_vap, args.ap, wc))
+                    else:
+                        print("API Failure")
+                else:
+                    print(ssid_vap + " is not a valid VAP")
+
+    # these commands are work on specific groups
+    if args.ssid != "NONE":
+        if args.ssid in config_class.ssid_prof.keys():
+            if args.ssid_current:
+                print(args.ssid + ":")
+                if "essid" in config_class.ssid_prof[args.ssid].keys():
+                    print("  ESSID: " + config_class.ssid_prof[args.ssid]["essid"]["essid"])
+                if "wpa_passphrase" in config_class.ssid_prof[args.ssid].keys():
+                    print("  PSK: " + config_class.ssid_prof[args.ssid]["wpa_passphrase"]["wpa-passphrase"])
+
+            if args.ssid_essid != "NONE":
+                essid_data = {"profile-name": args.ssid, "essid": {"essid": args.ssid_essid}}
+                update_essid = requests.post(
+                    url="https://" + wc + ":4343/v1/configuration/object/ssid_prof?config_path=" + config_path + "&UIDARUBA=" + uid,
+                    data=json.dumps(essid_data),
+                    headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
+                    cookies=cookie,
+                    verify=False,
+                )
+                if update_essid.ok:
+                    print("Updated ESSID on {} on {}".format(args.ssid, wc))
+                else:
+                    print("API Failure")
+
+            if args.ssid_psk != "NONE":
+                if "wpa_passphrase" in config_class.ssid_prof[args.ssid].keys():
+                    psk_data = {
+                        "profile-name": args.ssid,
+                        "wpa_passphrase": {"wpa-passphrase": args.ssid_psk},
+                    }
+                    update_psk = requests.post(
+                        url="https://" + wc + ":4343/v1/configuration/object/ssid_prof?config_path=" + config_path + "&UIDARUBA=" + uid,
+                        data=json.dumps(psk_data),
+                        headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
+                        cookies=cookie,
+                        verify=False,
+                    )
+                    if update_psk.ok:
+                        print("Updated PSK on {} on {}".format(args.ssid, wc))
+                    else:
+                        print("API Failure")
+
+        else:
+            print("Invalid SSID Profile")
+
+    write_memory = ap_ssid_add = requests.post(
+        url="https://" + wc + ":4343/v1/configuration/object/write_memory?config_path=" + config_path + "&UIDARUBA=" + uid,
+        data={},
+        headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
+        cookies=cookie,
+        verify=False,
+    )
+
+    if args.ssid_list:
+        print("SSIDs")
+        for vap in config_class.virtual_ap:
+            print("- VAP: " + vap)
+            print("  - Profile: " + config_class.virtual_ap[vap]["ssid_prof"]["profile-name"])
+            print("    - essid: " + config_class.ssid_prof[config_class.virtual_ap[vap]["ssid_prof"]["profile-name"]]["essid"]["essid"])
+
+    return None
+
+
+def aruba_set_raw_config(mc, password, raw_config):
+    conn = {
+        "device_type": "aruba_os_ssh",
+        "host": mc,
+        "username": "umnet",
+        "password": password,
+        "banner_timeout": 10,
+    }
+
+    cd_command = "cd " + config_path
+
+    ch = ConnectHandler(**conn)
+    ch.send_command_timing(cd_command, strip_command=False, strip_prompt=False)
+    ch.send_config_set(raw_config, delay_factor=5, cmd_verify=False)
+    time.sleep(3)
+    ch.send_command_timing("write memory", strip_command=False, strip_prompt=False)
+
+    print("Config was pushed to " + mc)
+
+
+def print_ssid_config(current_config):
+    for ssid in current_config:
+        print(ssid + ":")
+        if "essid" in current_config[ssid].keys():
+            print("  ESSID: " + current_config[ssid]["essid"])
+        if "wpa-passphrase" in current_config[ssid].keys():
+            print("  PSK: " + current_config[ssid]["wpa-passphrase"])
+
+
+def main():
+    # CLI parser for the command
+    parser = argparse.ArgumentParser(description="Aruba AP Config.")
+
+    parser.add_argument(
+        "--ap",
+        default="NONE",
+        help="AP to Modify, case sensitive",
+    )
+
+    parser.add_argument(
+        "--ap-ssid-add",
+        default="NONE",
+        help="SSID to add to AP, use vap",
+    )
+
+    parser.add_argument(
+        "--ap-ssid-remove",
+        default="NONE",
+        help="SSID to remove from AP, use vap",
+    )
+
+    parser.add_argument(
+        "--ap-current",
+        action="store_true",
+        default=False,
+        help="Unique SSIDs configured on AP",
+    )
+
+    parser.add_argument(
+        "--ssid",
+        default="NONE",
+        help="Add SSID Specific Config, use SSID profile",
+    )
+
+    parser.add_argument(
+        "--ssid-essid",
+        default="NONE",
+        help="Set ESSID for SSID Profile",
+    )
+
+    parser.add_argument(
+        "--ssid-psk",
+        default="NONE",
+        help="PSK for SSID Profile",
+    )
+
+    parser.add_argument(
+        "--ssid-current",
+        action="store_true",
+        default=False,
+        help="Current Config for SSID Profile",
+    )
+
+    parser.add_argument(
+        "--ssid-list",
+        action="store_true",
+        default=False,
+        help="SSID Profile and ESSID List",
+    )
+
+    parser.add_argument(
+        "--raw-config",
+        action="store_true",
+        default=False,
+        help="USE WITH CARE Input Raw config to push out to MCs",
+    )
+
+    # parse the arguments and print help if there are none
+    if len(sys.argv) == 1:
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+
+    # read CLI into args
+    args = parser.parse_args()
+
+    manager = Manager()
+    wc_api = manager.dict()
+
+    if args.raw_config:
+        print("Paste in the config and press ctrl-D to end input")
+        raw_config = sys.stdin.readlines()
+        confirm = input("Are you sure you want to deploy this to? (N/y)  ")
+        if confirm.lower().startswith("y"):
+            print("Pushing config....")
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                for mc in mobility_conductors:
+                    executor.submit(aruba_set_raw_config, mc, password, raw_config)
+            sys.exit()
+        else:
+            print("Quiting...")
+            sys.exit()
+
+    # make sure at least one of the options below is given
+    if args.ap or args.ssid or args.ssid_list:
+        config_class = ArubaConfig()
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for mc in mobility_conductors:
+                executor.submit(get_aruba_api_token, mc, password, wc_api)
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for mc in mobility_conductors:
+                executor.submit(set_ap_config, mc, wc_api, args, config_class)
+
+
+if __name__ == "__main__":
+    main()

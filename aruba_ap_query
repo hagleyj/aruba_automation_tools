@@ -1,0 +1,358 @@
+#!/usr/bin/env python3
+
+from os import name
+import sys
+import argparse
+import re
+import urllib3
+from multiprocessing import Manager
+import concurrent.futures
+
+from umnet_utils import *
+from aruba_query import *
+from constants import *
+
+
+def print_ap_inactive(ap):
+    if "I" in ap.flags:
+        print("{} {} is marked inactive and needs investigation - Flags {}".format(ap.name, ap.ip, ap.flags))
+    return None
+
+
+def print_ap_search(ap):
+    print("{},{},{},{},{},{},{},{},{}".format(ap.name, ap.ip, ap.group, ap.model, ap.flags, ap.status, ap.primary, ap.secondary, ap.mac))
+    return None
+
+
+def print_eth1(ap, ap_list):
+    if not ap_list[ap].lldp0 and ap_list[ap].lldp1:
+        print("{} is connected with eth1 to {} port {}".format(ap_list[ap].name, [key for key in ap_list[ap].lldp1.keys()][0], [key for key in ap_list[ap].lldp1.values()][0]))
+    elif ap_list[ap].lldp0 and ap_list[ap].lldp1:
+        print("{} is dual connected with both eth0 and eth1".format(ap_list[ap].name))
+        print("    - eth0 is connected to {}, port {}".format([key for key in ap_list[ap].lldp0.keys()][0], [key for key in ap_list[ap].lldp0.values()][0]))
+        print("    - eth1 is connected to {}, port {}".format([key for key in ap_list[ap].lldp1.keys()][0], [key for key in ap_list[ap].lldp1.values()][0]))
+    return None
+
+
+def print_ap_radio(ap, ap_list):
+    radio = ap_list[ap].radio
+    print(
+        "{},{},{},{},{},{},{},{},{},{},{}".format(
+            ap_list[ap].name,
+            ap_list[ap].model,
+            radio["radio0"]["band"],
+            radio["radio0"]["channel"],
+            radio["radio0"]["power"],
+            radio["radio1"]["band"],
+            radio["radio1"]["channel"],
+            radio["radio1"]["power"],
+            radio["radio2"]["band"],
+            radio["radio2"]["channel"],
+            radio["radio2"]["power"],
+        )
+    )
+    return None
+
+
+def print_bssid(ap, ap_list):
+    print(ap_list[ap].name)
+    bssid = ap_list[ap].bssid
+    for bss in bssid:
+        print(
+            "    {} - {},{},{}".format(
+                bss,
+                bssid[bss]["essid"],
+                bssid[bss]["band"],
+                bssid[bss]["channel"],
+            )
+        )
+    return None
+
+
+def print_ap_config(ap, ap_list, config_class):
+    prof_a = eirp_min_a = eirp_max_a = prof_g = eirp_min_g = eirp_max_g = prof_6 = eirp_min_6 = eirp_max_6 = led_mode = reg_prof = sys_prof = "N/A"
+    ssid_dict = {}
+    chan_a = []
+    chan_b = []
+    chan_40_a = []
+    chan_6 = []
+    ssid_dict = {}
+
+    # we need to loop through the group first for the config, and then the ap specific config if it exists
+    if ap_list[ap].group in config_class.ap_group.keys():
+        if "dot11a_prof" in config_class.ap_group[ap_list[ap].group].keys():
+            prof_a = config_class.ap_group[ap_list[ap].group]["dot11a_prof"]["profile-name"]
+            eirp_min_a = config_class.radio_prof_a[prof_a]["eirp_min"]["eirp-min"]
+            eirp_max_a = config_class.radio_prof_a[prof_a]["eirp_max"]["eirp-max"]
+        if "dot11g_prof" in config_class.ap_group[ap_list[ap].group].keys():
+            prof_g = config_class.ap_group[ap_list[ap].group]["dot11g_prof"]["profile-name"]
+            eirp_min_g = config_class.radio_prof_b[prof_g]["eirp_min"]["eirp-min"]
+            eirp_max_g = config_class.radio_prof_b[prof_g]["eirp_max"]["eirp-max"]
+        if "dot11_6ghz_prof" in config_class.ap_group[ap_list[ap].group].keys():
+            prof_6 = config_class.ap_group[ap_list[ap].group]["dot11_6ghz_prof"]["profile-name"]
+            eirp_min_6 = config_class.radio_prof_6[prof_6]["eirp_min"]["eirp-min"]
+            eirp_max_6 = config_class.radio_prof_6[prof_6]["eirp_max"]["eirp-max"]
+        if "ap_sys_prof" in config_class.ap_group[ap_list[ap].group].keys():
+            sys_prof = config_class.ap_group[ap_list[ap].group]["ap_sys_prof"]["profile-name"]
+            led_mode = config_class.system_profile[sys_prof]["led_mode"]["led_mode"]
+        if "reg_domain_prof" in config_class.ap_group[ap_list[ap].group].keys():
+            reg_prof = config_class.ap_group[ap_list[ap].group]["reg_domain_prof"]["profile-name"]
+            if "valid_11b_channel" in config_class.reg_domain_profile[reg_prof].keys():
+                for chan in config_class.reg_domain_profile[reg_prof]["valid_11b_channel"]:
+                    chan_b.append(str(chan["valid-11g-channel"]))
+            if "valid_11a_channel" in config_class.reg_domain_profile[reg_prof].keys():
+                for chan in config_class.reg_domain_profile[reg_prof]["valid_11a_channel"]:
+                    chan_a.append(str(chan["valid-11a-channel"]))
+            if "valid_11a_40mhz_chan_pair_nd" in config_class.reg_domain_profile[reg_prof].keys():
+                for chan in config_class.reg_domain_profile[reg_prof]["valid_11a_40mhz_chan_pair_nd"]:
+                    chan_40_a.append(chan["valid-11a-40mhz-channel-pair"])
+            if "valid_6ghz_channel" in config_class.reg_domain_profile[reg_prof].keys():
+                for chan in config_class.reg_domain_profile[reg_prof]["valid_6ghz_channel"]:
+                    chan_6.append(str(chan["valid-6ghz-channel"]))
+        if "virtual_ap" in config_class.ap_group[ap_list[ap].group].keys():
+            for vap in config_class.ap_group[ap_list[ap].group]["virtual_ap"]:
+                basic_rates_a = list(config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["a_basic_rates"].values())
+                tx_rates_a = list(config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["a_tx_rates"].values())
+                basic_rates_b = list(config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["g_basic_rates"].values())
+                tx_rates_b = list(config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["g_tx_rates"].values())
+                max_clients = config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["max_clients"]["max-clients"]
+                ssid_dict.update(
+                    {vap["profile-name"]: {"basic_rates_a": basic_rates_a, "tx_rates_a": tx_rates_a, "basic_rates_b": basic_rates_b, "tx_rates_b": tx_rates_b, "max_clients": max_clients}}
+                )
+
+    if ap in config_class.ap_name.keys():
+        if "dot11a_prof" in config_class.ap_name[ap_list[ap].name].keys():
+            prof_a = config_class.ap_name[ap_list[ap].name]["dot11a_prof"]["profile-name"]
+            eirp_min_a = config_class.radio_prof_a[prof_a]["eirp_min"]["eirp-min"]
+            eirp_max_a = config_class.radio_prof_a[prof_a]["eirp_max"]["eirp-max"]
+        if "dot11g_prof" in config_class.ap_name[ap_list[ap].name].keys():
+            prof_g = config_class.ap_name[ap_list[ap].name]["dot11g_prof"]["profile-name"]
+            eirp_min_g = config_class.radio_prof_b[prof_g]["eirp_min"]["eirp-min"]
+            eirp_max_g = config_class.radio_prof_b[prof_g]["eirp_max"]["eirp-max"]
+        if "dot11_6ghz_prof" in config_class.ap_name[ap_list[ap].name].keys():
+            prof_6 = config_class.ap_name[ap_list[ap].name]["dot11_6ghz_prof"]["profile-name"]
+            eirp_min_6 = config_class.radio_prof_6[prof_6]["eirp_min"]["eirp-min"]
+            eirp_max_6 = config_class.radio_prof_6[prof_6]["eirp_max"]["eirp-max"]
+        if "ap_sys_prof" in config_class.ap_name[ap_list[ap].name].keys():
+            sys_prof = config_class.ap_name[ap_list[ap].name]["ap_sys_prof"]["profile-name"]
+            led_mode = config_class.system_profile[sys_prof]["led_mode"]["led_mode"]
+        if "reg_domain_prof" in config_class.ap_name[ap_list[ap].name].keys():
+            reg_prof = config_class.ap_name[ap_list[ap].name]["reg_domain_prof"]["profile-name"]
+            if "valid_11b_channel" in config_class.reg_domain_profile[reg_prof].keys():
+                for chan in config_class.reg_domain_profile[reg_prof]["valid_11b_channel"]:
+                    chan_b.append(str(chan["valid-11g-channel"]))
+            if "valid_11a_channel" in config_class.reg_domain_profile[reg_prof].keys():
+                for chan in config_class.reg_domain_profile[reg_prof]["valid_11a_channel"]:
+                    chan_a.append(str(chan["valid-11a-channel"]))
+            if "valid_11a_40mhz_chan_pair_nd" in config_class.reg_domain_profile[reg_prof].keys():
+                for chan in config_class.reg_domain_profile[reg_prof]["valid_11a_40mhz_chan_pair_nd"]:
+                    chan_40_a.append(chan["valid-11a-40mhz-channel-pair"])
+            if "valid_6ghz_channel" in config_class.reg_domain_profile[reg_prof].keys():
+                for chan in config_class.reg_domain_profile[reg_prof]["valid_6ghz_channel"]:
+                    chan_6.append(str(chan["valid-6ghz-channel"]))
+        if "virtual_ap" in config_class.ap_name[ap_list[ap].name].keys():
+            for vap in config_class.ap_name[ap_list[ap].name]["virtual_ap"]:
+                basic_rates_a = list(config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["a_basic_rates"].values())
+                tx_rates_a = list(config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["a_tx_rates"].values())
+                basic_rates_b = list(config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["g_basic_rates"].values())
+                tx_rates_b = list(config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["g_tx_rates"].values())
+                max_clients = config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["max_clients"]["max-clients"]
+                ssid_dict.update(
+                    {vap["profile-name"]: {"basic_rates_a": basic_rates_a, "tx_rates_a": tx_rates_a, "basic_rates_b": basic_rates_b, "tx_rates_b": tx_rates_b, "max_clients": max_clients}}
+                )
+    print(
+        "{}: Group - {}, Model - {}, MAC - {}, LED - {}".format(
+            ap_list[ap].name,
+            ap_list[ap].group,
+            ap_list[ap].model,
+            ap_list[ap].mac,
+            led_mode,
+        )
+    )
+    print("   2.4Ghz Profile - {}, 2.4Ghz Channels - {}".format(prof_g, chan_b))
+    print("   2.4Ghz EIRP Min - {}, 2.4Ghz EIRP Max - {}".format(eirp_min_g, eirp_max_g))
+    print("   5Ghz Profile - {}, 5Ghz Channels - {}".format(prof_a, chan_a))
+    print("   5Ghz EIRP Min - {}, 5Ghz EIRP Max - {}".format(eirp_min_a, eirp_max_a))
+    print("   6Ghz Profile - {}, 6Ghz Channels - {}".format(prof_6, chan_6))
+    print("   6Ghz EIRP Min - {}, 6Ghz EIRP Max - {}".format(eirp_min_6, eirp_max_6))
+    print("   SSID Specific Configs:")
+    for ssid in ssid_dict:
+        print("      " + ssid + ": " + str(ssid_dict[ssid]))
+    print()
+    return None
+
+
+def print_aruba_groups(config_class):
+    for group in config_class.ap_group:
+        print(group + ":")
+        if "virtual_ap" in config_class.ap_group[group].keys():
+            for vap in config_class.ap_group[group]["virtual_ap"]:
+                print("  - " + vap["profile-name"])
+        else:
+            print("  - NO SSIDs in GROUP")
+
+    return None
+
+
+def main():
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    # CLI parser for the command
+    parser = argparse.ArgumentParser(description="Aruba AP query.  You must give one of the search type options")
+
+    # Get input from CLI
+    parser.add_argument(
+        "-p",
+        "--partial",
+        default="NONE",
+        help="Enter the partial AP name to search for",
+    )
+    parser.add_argument(
+        "-n",
+        "--network",
+        default="255.255.255.255/32",
+        help="Enter the AP Subnet, ie 192.168.1.0/24, or multiple comma separated networks",
+    )
+    parser.add_argument(
+        "--ap",
+        default="NONE",
+        help="Enter the individual AP to search for",
+    )
+    parser.add_argument(
+        "--eth1",
+        action="store_true",
+        help="Check for eth1",
+    )
+    parser.add_argument(
+        "--inactive",
+        action="store_true",
+        help="Check for inactive APs",
+    )
+    parser.add_argument(
+        "--search",
+        action="store_true",
+        help="Search for APs",
+    )
+    parser.add_argument(
+        "--radio",
+        action="store_true",
+        help="Print AP radio configs",
+    )
+    parser.add_argument(
+        "--count",
+        action="store_true",
+        help="Print count of APs",
+    )
+    parser.add_argument(
+        "--bssid",
+        action="store_true",
+        help="Print bssids per AP",
+    )
+    parser.add_argument(
+        "--config",
+        action="store_true",
+        help="Useful Config for the APs/SSIDs assigned to them",
+    )
+    parser.add_argument(
+        "--groups",
+        action="store_true",
+        default=False,
+        help="Print out Aruba Groups and SSIDs",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        default=False,
+        help="Search for all APs in Ann Arbor or Dearborn",
+    )
+
+    # set these manually since the APs don't know the info
+
+    manager = Manager()
+    ap_list = manager.dict()
+    wc_api = manager.dict()
+
+    args = parser.parse_args()
+
+    # determine dc/mc to use based on args
+    
+    # if --all is selected, set the network to be everything to save login in if statements later
+    if args.all:
+        args.network = "0.0.0.0/0"
+
+    # allows the ability to have comma separated lists of networks
+    networks_tmp = re.sub(r"\s+", "", args.network)
+    networks = networks_tmp.split(",")
+
+    # get the api token for all controllers
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for wc in mobility_controllers:
+            executor.submit(get_aruba_api_token, wc, password, wc_api)
+
+    # get the basic info for aps
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for wc in mobility_controllers:
+            executor.submit(get_aruba_db, wc, networks, wc_api, args, ap_list)
+
+    if args.search:
+        print("---Aruba AP Search---")
+        for ap in ap_list:
+            print_ap_search(ap_list[ap])
+        print("Total APs Found: " + str(len(ap_list)))
+    if args.count:
+        print("Total APs Found: " + str(len(ap_list)))
+    if args.inactive:
+        print("---Inactive Aruba APs---")
+        for ap in ap_list:
+            print_ap_inactive(ap_list[ap])
+        print("")
+
+    if args.eth1:
+        # we get eth1 data separate, and only when needed, since it takes more time
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for wc in mobility_controllers:
+                    executor.submit(get_aruba_eth1, wc, wc_api, ap_list)
+        print("---Aruba APs with Eth1---")
+        for ap in ap_list:
+            print_eth1(ap, ap_list)
+        print("")
+
+    if args.radio:
+        # we get radio data separate, and only when needed, since it takes more time
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for wc in mobility_controllers:
+                executor.submit(get_radio_database, wc, wc_api, ap_list)
+        print("---AP Channel and Power---")
+        print("ap_name,model,radio0_band,radio0_channel,radio0_power,radio1_band,radio1_channel,radio1_power,radio2_band,radio2_channel,radio2_power")
+        for ap in ap_list:
+            print_ap_radio(ap, ap_list)
+        print("")
+    if args.bssid:
+        # we get bssid data separate, and only when needed, since it takes more time
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for wc in mobility_controllers:
+                executor.submit(get_bssid_table, wc, wc_api, ap_list)
+        if args.bssid:
+            print("---Aruba AP BSSID---")
+            for ap in ap_list:
+                print_bssid(ap, ap_list)
+            print("")
+
+    if args.config or args.groups:
+        # we get config data separate, and only when needed, since it takes more time.  We also only pull the config from the conductors
+        config_class = ArubaConfig()
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for mc in mobility_conductors:
+                executor.submit(get_aruba_api_token, mc, password, wc_api)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for mc in mobility_conductors:
+                executor.submit(get_aruba_config, mc, wc_api, config_class)
+
+        if args.config:
+            for ap in ap_list:
+                print_ap_config(ap, ap_list, config_class)
+        if args.groups:
+            print_aruba_groups(config_class)
+
+
+if __name__ == "__main__":
+    main()

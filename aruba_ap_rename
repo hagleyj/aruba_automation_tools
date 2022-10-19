@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+
+from os import path
+import sys
+import argparse
+import csv
+import json
+from multiprocessing import Manager
+import concurrent.futures
+
+from constants import *
+from umnet_utils import *
+from aruba_query import *
+
+
+def parse_csv(csvfile):
+    ap_config_dict = {}
+    with open(csvfile, "r") as ap_file:
+        ap_import_data = csv.DictReader(ap_file, delimiter=",")
+        for row in ap_import_data:
+            ap_config_dict[mac_to_colon_separated(row["MAC"]).lower()] = {
+                "name": row["Name"],
+                "group": row["Group"],
+            }
+    return ap_config_dict
+
+
+def rename_ap(wc, wc_api, args, ap_config):
+    ap_list = {}
+
+    command = "show+ap+database+long"
+    response = aruba_show_command(wc, command, wc_api)
+    # parse json response and update the class
+    for ap in response["AP Database"]:
+        if ap["Status"].startswith("Up"):
+            tmp_ap = ArubaAP(ap["Name"])
+            tmp_ap.setMac(ap["Wired MAC Address"])
+            tmp_ap.setGroup(ap["Group"])
+            ap_list.setdefault(ap["Wired MAC Address"], tmp_ap)
+
+    uid = wc_api[wc].uid
+    cookie = dict(SESSION=uid)
+
+    for ap in ap_config:
+        if ap in ap_list.keys():
+            if args.force:
+                rename_data = {"wired-mac": ap_list[ap].mac, "new-name": ap_config[ap]["name"]}
+                rename_ap = requests.post(
+                    url="https://" + wc + ":4343/v1/configuration/object/ap_rename?config_path=%2Fmm&UIDARUBA=" + uid,
+                    data=json.dumps(rename_data),
+                    headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
+                    cookies=cookie,
+                    verify=False,
+                )
+                if rename_ap.ok:
+                    print("Renamed " + ap_list[ap].name + " to " + ap_config[ap]["name"])
+                else:
+                    print("API Failure")
+            else:
+                if ap != "NONE":
+                    # if new name doesn't match existing name, then change it
+                    if ap_list[ap].name != ap_config[ap]["name"]:
+                        rename_data = {"wired-mac": ap_list[ap].mac, "new-name": ap_config[ap]["name"]}
+                        rename_ap = requests.post(
+                            url="https://" + wc + ":4343/v1/configuration/object/ap_rename?config_path=%2Fmm&UIDARUBA=" + uid,
+                            data=json.dumps(rename_data),
+                            headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
+                            cookies=cookie,
+                            verify=False,
+                        )
+                        if rename_ap.ok:
+                            print("Renamed " + ap_list[ap].name + " to " + ap_config[ap]["name"])
+                        else:
+                            print("API Failure")
+
+
+def regroup_ap(wc, wc_api, args, ap_config):
+    ap_list = {}
+
+    command = "show+ap+database+long"
+    response = aruba_show_command(wc, command, wc_api)
+    # parse json response and update the class
+    for ap in response["AP Database"]:
+        if ap["Status"].startswith("Up"):
+            tmp_ap = ArubaAP(ap["Name"])
+            tmp_ap.setMac(ap["Wired MAC Address"])
+            tmp_ap.setGroup(ap["Group"])
+            ap_list.setdefault(ap["Wired MAC Address"], tmp_ap)
+
+    uid = wc_api[wc].uid
+
+    cookie = dict(SESSION=uid)
+
+    for ap in ap_config:
+        # check to make sure the AP is on the conductor
+        if ap in ap_list.keys():
+            if args.force:
+                rename_data = {"wired-mac": ap_list[ap].mac, "new-group": ap_config[ap]["group"]}
+                rename_ap = requests.post(
+                    url="https://" + wc + ":4343/v1/configuration/object/ap_regroup?config_path=%2Fmm&UIDARUBA=" + uid,
+                    data=json.dumps(rename_data),
+                    headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
+                    cookies=cookie,
+                    verify=False,
+                )
+                if rename_ap.ok:
+                    print("Changed " + ap_list[ap].name + " to group " + ap_config[ap]["group"])
+                else:
+                    print("API Failure")
+            else:
+                if ap != "NONE":
+                    # if new group doesn't match existing group, then change it
+                    if ap_list[ap].group != ap_config[ap]["group"]:
+                        rename_data = {"wired-mac": ap_list[ap].mac, "new-group": ap_config[ap]["group"]}
+                        rename_ap = requests.post(
+                            url="https://" + wc + ":4343/v1/configuration/object/ap_regroup?config_path=%2Fmm&UIDARUBA=" + uid,
+                            data=json.dumps(rename_data),
+                            headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
+                            cookies=cookie,
+                            verify=False,
+                        )
+                        if rename_ap.ok:
+                            print("Changed " + ap_list[ap].name + " to group " + ap_config[ap]["group"])
+                        else:
+                            print("API Failure")
+
+
+def main():
+    # CLI parser for the command
+    parser = argparse.ArgumentParser(description="Aruba AP rename")
+
+    # Get input from CLI
+    parser.add_argument(
+        "--mac",
+        help="Enter the MAC Address of the new AP",
+    )
+    parser.add_argument(
+        "--group",
+        default="None",
+        help="Enter the AP group",
+    )
+    parser.add_argument(
+        "--name",
+        default="None",
+        help="Enter the new AP name",
+    )
+    parser.add_argument(
+        "--csv",
+        help="CSV file to import",
+    )
+    parser.add_argument(
+        "--rename",
+        action="store_true",
+        help="Rename APs",
+    )
+    parser.add_argument(
+        "--regroup",
+        action="store_true",
+        help="Regroup APs",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="Force the AP the change name or group",
+    )
+
+    # parse the arguments and print help if there are none
+    if len(sys.argv) == 1:
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+
+    # read CLI into args
+    args = parser.parse_args()
+
+    # mobility controllers
+   
+    ap_config = {}
+    manager = Manager()
+    wc_api = manager.dict()
+
+    # get the api token for all controllers
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for mc in mobility_conductors:
+            executor.submit(get_aruba_api_token, mc, password, wc_api)
+
+    if args.csv:
+        ap_config = parse_csv(args.csv)
+    elif args.mac:
+        ap_config[mac_to_colon_separated(args.mac).lower()] = {"name": args.name, "group": args.group}
+
+    else:
+        print("You need to enter the data for an individual AP or import a CSV")
+
+    if args.rename:
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for mc in mobility_conductors:
+                executor.submit(rename_ap, mc, wc_api, args, ap_config)
+
+    elif args.regroup:
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for mc in mobility_conductors:
+                executor.submit(regroup_ap, mc, wc_api, args, ap_config)
+
+
+if __name__ == "__main__":
+    main()
