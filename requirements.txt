@@ -1,3 +1,5 @@
 paramiko
 netmiko
 netaddr
+gspread
+oauth2client

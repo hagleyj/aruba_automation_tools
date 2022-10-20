@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 
 
-config_path = "/md"
-username = ""
-password = ""
-mobility_conductors = []
-mobility_controllers = []
+CONFIG_PATH = "/md"
+USERNAME = ""
+PASSWORD = ""
+MOBILITY_CONDUCTORS = []
+MOBILITY_CONTROLLERS = []
+#gsheet API settings
+SERVICE_ACCOUNT_EMAIL = ""
+PROJECT_ID = ""
+CLIENT_ID = ""
+PRIVATE_KEY_ID = ""
+PRIVATE_KEY = ""

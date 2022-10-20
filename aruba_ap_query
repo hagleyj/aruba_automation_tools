@@ -8,7 +8,7 @@ import urllib3
 from multiprocessing import Manager
 import concurrent.futures
 
-from umnet_utils import *
+from utils import *
 from aruba_query import *
 from constants import *
 
@@ -274,7 +274,7 @@ def main():
     args = parser.parse_args()
 
     # determine dc/mc to use based on args
-    
+
     # if --all is selected, set the network to be everything to save login in if statements later
     if args.all:
         args.network = "0.0.0.0/0"
@@ -285,12 +285,12 @@ def main():
 
     # get the api token for all controllers
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        for wc in mobility_controllers:
-            executor.submit(get_aruba_api_token, wc, password, wc_api)
+        for wc in MOBILITY_CONTROLLERS:
+            executor.submit(get_aruba_api_token, wc, PASSWORD, wc_api)
 
     # get the basic info for aps
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        for wc in mobility_controllers:
+        for wc in MOBILITY_CONTROLLERS:
             executor.submit(get_aruba_db, wc, networks, wc_api, args, ap_list)
 
     if args.search:
@@ -309,8 +309,8 @@ def main():
     if args.eth1:
         # we get eth1 data separate, and only when needed, since it takes more time
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            for wc in mobility_controllers:
-                    executor.submit(get_aruba_eth1, wc, wc_api, ap_list)
+            for wc in MOBILITY_CONTROLLERS:
+                executor.submit(get_aruba_eth1, wc, wc_api, ap_list)
         print("---Aruba APs with Eth1---")
         for ap in ap_list:
             print_eth1(ap, ap_list)
@@ -319,7 +319,7 @@ def main():
     if args.radio:
         # we get radio data separate, and only when needed, since it takes more time
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            for wc in mobility_controllers:
+            for wc in MOBILITY_CONTROLLERS:
                 executor.submit(get_radio_database, wc, wc_api, ap_list)
         print("---AP Channel and Power---")
         print("ap_name,model,radio0_band,radio0_channel,radio0_power,radio1_band,radio1_channel,radio1_power,radio2_band,radio2_channel,radio2_power")
@@ -329,7 +329,7 @@ def main():
     if args.bssid:
         # we get bssid data separate, and only when needed, since it takes more time
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            for wc in mobility_controllers:
+            for wc in MOBILITY_CONTROLLERS:
                 executor.submit(get_bssid_table, wc, wc_api, ap_list)
         if args.bssid:
             print("---Aruba AP BSSID---")
@@ -341,10 +341,10 @@ def main():
         # we get config data separate, and only when needed, since it takes more time.  We also only pull the config from the conductors
         config_class = ArubaConfig()
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            for mc in mobility_conductors:
-                executor.submit(get_aruba_api_token, mc, password, wc_api)
+            for mc in MOBILITY_CONDUCTORS:
+                executor.submit(get_aruba_api_token, mc, PASSWORD, wc_api)
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            for mc in mobility_conductors:
+            for mc in MOBILITY_CONDUCTORS:
                 executor.submit(get_aruba_config, mc, wc_api, config_class)
 
         if args.config:

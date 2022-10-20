@@ -3,8 +3,6 @@
 from ipaddress import ip_address, ip_network
 from pickletools import read_unicodestring1
 import requests
-from constants import *
-
 
 
 # This is a class to store the config data from the conductors.  We only store what is needed
@@ -301,4 +299,3 @@ def get_aruba_config(wc, wc_api, config_class):
                 conf_dict = {conf["profile-name"]: conf}
                 config_class.updateVirtualAP(conf_dict)
     return None
-

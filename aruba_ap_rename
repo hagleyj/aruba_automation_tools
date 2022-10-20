@@ -7,9 +7,9 @@ import csv
 import json
 from multiprocessing import Manager
 import concurrent.futures
-
 from constants import *
-from umnet_utils import *
+from utils import GoogleSheet
+from utils import *
 from aruba_query import *
 
 
@@ -22,6 +22,18 @@ def parse_csv(csvfile):
                 "name": row["Name"],
                 "group": row["Group"],
             }
+    return ap_config_dict
+
+
+def parse_gsheet(sheetid):
+    ap_config_dict = {}
+    gsheet_query = GoogleSheet()
+    gsheet = gsheet_query.open_google_sheet(sheetid, 0)
+    for row in gsheet:
+        ap_config_dict[mac_to_colon_separated(row["MAC"]).lower()] = {
+            "name": row["Name"],
+            "group": row["Group"],
+        }
     return ap_config_dict
 
 
@@ -149,6 +161,11 @@ def main():
         help="CSV file to import",
     )
     parser.add_argument(
+        "--gsheet",
+        default="None",
+        help="Enter the sheet id to open, make sure this sheet is shared with the API account",
+    )
+    parser.add_argument(
         "--rename",
         action="store_true",
         help="Rename APs",
@@ -174,18 +191,20 @@ def main():
     args = parser.parse_args()
 
     # mobility controllers
-   
+
     ap_config = {}
     manager = Manager()
     wc_api = manager.dict()
 
     # get the api token for all controllers
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        for mc in mobility_conductors:
-            executor.submit(get_aruba_api_token, mc, password, wc_api)
+        for mc in MOBILITY_CONDUCTORS:
+            executor.submit(get_aruba_api_token, mc, PASSWORD, wc_api)
 
     if args.csv:
         ap_config = parse_csv(args.csv)
+    elif args.gsheet:
+        ap_config = parse_gsheet(args.gsheet)
     elif args.mac:
         ap_config[mac_to_colon_separated(args.mac).lower()] = {"name": args.name, "group": args.group}
 
@@ -194,12 +213,12 @@ def main():
 
     if args.rename:
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            for mc in mobility_conductors:
+            for mc in MOBILITY_CONDUCTORS:
                 executor.submit(rename_ap, mc, wc_api, args, ap_config)
 
     elif args.regroup:
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            for mc in mobility_conductors:
+            for mc in MOBILITY_CONDUCTORS:
                 executor.submit(regroup_ap, mc, wc_api, args, ap_config)
 
 

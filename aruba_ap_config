@@ -35,7 +35,7 @@ def set_ap_config(wc, wc_api, args, config_class):
                 if ssid_vap in config_class.virtual_ap.keys():
                     ap_ssid_add_data = {"profile-name": args.ap, "virtual_ap": [{"profile-name": ssid_vap}]}
                     ap_ssid_add = requests.post(
-                        url="https://" + wc + ":4343/v1/configuration/object/ap_name?config_path=" + config_path + "&UIDARUBA=" + uid,
+                        url="https://" + wc + ":4343/v1/configuration/object/ap_name?config_path=" + CONFIG_PATH + "&UIDARUBA=" + uid,
                         data=json.dumps(ap_ssid_add_data),
                         headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
                         cookies=cookie,
@@ -54,7 +54,7 @@ def set_ap_config(wc, wc_api, args, config_class):
                 if ssid_vap in config_class.virtual_ap.keys():
                     ap_ssid_remove_data = {"profile-name": args.ap, "virtual_ap": [{"profile-name": ssid_vap}], "_action": "delete"}
                     ap_ssid_remove = requests.post(
-                        url="https://" + wc + ":4343/v1/configuration/object/ap_name?config_path=" + config_path + "&UIDARUBA=" + uid,
+                        url="https://" + wc + ":4343/v1/configuration/object/ap_name?config_path=" + CONFIG_PATH + "&UIDARUBA=" + uid,
                         data=json.dumps(ap_ssid_remove_data),
                         headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
                         cookies=cookie,
@@ -80,7 +80,7 @@ def set_ap_config(wc, wc_api, args, config_class):
             if args.ssid_essid != "NONE":
                 essid_data = {"profile-name": args.ssid, "essid": {"essid": args.ssid_essid}}
                 update_essid = requests.post(
-                    url="https://" + wc + ":4343/v1/configuration/object/ssid_prof?config_path=" + config_path + "&UIDARUBA=" + uid,
+                    url="https://" + wc + ":4343/v1/configuration/object/ssid_prof?config_path=" + CONFIG_PATH + "&UIDARUBA=" + uid,
                     data=json.dumps(essid_data),
                     headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
                     cookies=cookie,
@@ -98,7 +98,7 @@ def set_ap_config(wc, wc_api, args, config_class):
                         "wpa_passphrase": {"wpa-passphrase": args.ssid_psk},
                     }
                     update_psk = requests.post(
-                        url="https://" + wc + ":4343/v1/configuration/object/ssid_prof?config_path=" + config_path + "&UIDARUBA=" + uid,
+                        url="https://" + wc + ":4343/v1/configuration/object/ssid_prof?config_path=" + CONFIG_PATH + "&UIDARUBA=" + uid,
                         data=json.dumps(psk_data),
                         headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
                         cookies=cookie,
@@ -113,7 +113,7 @@ def set_ap_config(wc, wc_api, args, config_class):
             print("Invalid SSID Profile")
 
     write_memory = ap_ssid_add = requests.post(
-        url="https://" + wc + ":4343/v1/configuration/object/write_memory?config_path=" + config_path + "&UIDARUBA=" + uid,
+        url="https://" + wc + ":4343/v1/configuration/object/write_memory?config_path=" + CONFIG_PATH + "&UIDARUBA=" + uid,
         data={},
         headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
         cookies=cookie,
@@ -245,8 +245,8 @@ def main():
         if confirm.lower().startswith("y"):
             print("Pushing config....")
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                for mc in mobility_conductors:
-                    executor.submit(aruba_set_raw_config, mc, password, raw_config)
+                for mc in MOBILITY_CONDUCTORS:
+                    executor.submit(aruba_set_raw_config, mc, PASSWORD, raw_config)
             sys.exit()
         else:
             print("Quiting...")
@@ -256,11 +256,11 @@ def main():
     if args.ap or args.ssid or args.ssid_list:
         config_class = ArubaConfig()
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            for mc in mobility_conductors:
-                executor.submit(get_aruba_api_token, mc, password, wc_api)
+            for mc in MOBILITY_CONDUCTORS:
+                executor.submit(get_aruba_api_token, mc, PASSWORD, wc_api)
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            for mc in mobility_conductors:
+            for mc in MOBILITY_CONDUCTORS:
                 executor.submit(set_ap_config, mc, wc_api, args, config_class)
 
 

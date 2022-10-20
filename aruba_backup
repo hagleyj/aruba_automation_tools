@@ -3,7 +3,7 @@
 import concurrent.futures
 import paramiko
 from constants import *
-from umnet_utils import *
+from utils import *
 from aruba_query import *
 
 # download the full configs and save them to a text file
@@ -13,8 +13,8 @@ def backup_mc(mc):
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client.connect(
             mc,
-            username=username,
-            password=password,
+            username=USERNAME,
+            password=PASSWORD,
             allow_agent=False,
             look_for_keys=False,
         )
@@ -31,9 +31,9 @@ def backup_mc(mc):
             "show configuration effective",
         ]
 
-        commands.append("cd " + config_path)
+        commands.append("cd " + CONFIG_PATH)
         commands.append("show configuration effective")
-        for wc in mobility_controllers:
+        for wc in MOBILITY_CONTROLLERS:
             commands.append("cd " + wc)
             commands.append("show configuration effective")
 
@@ -55,8 +55,8 @@ def backup_mc(mc):
 def main():
     # backup aruba mobility controllers
     with concurrent.futures.ThreadPoolExecutor() as executor:
-            for mc in mobility_controllers:
-                executor.submit(backup_mc, mc)
+        for mc in MOBILITY_CONTROLLERS:
+            executor.submit(backup_mc, mc)
 
 
 if __name__ == "__main__":

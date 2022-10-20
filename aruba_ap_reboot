@@ -8,7 +8,7 @@ from multiprocessing import Manager
 import concurrent.futures
 
 from constants import *
-from umnet_utils import *
+from utils import *
 from aruba_query import *
 
 
@@ -75,17 +75,16 @@ def main():
     # read CLI into args
     args = parser.parse_args()
 
-
     manager = Manager()
     wc_api = manager.dict()
 
     # get the api token for all controllers
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        for wc in mobility_controllers:
-            executor.submit(get_aruba_api_token, wc, password, wc_api)
+        for wc in MOBILITY_CONTROLLERS:
+            executor.submit(get_aruba_api_token, wc, PASSWORD, wc_api)
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        for wc in mobility_controllers:
+        for wc in MOBILITY_CONTROLLERS:
             executor.submit(reboot_ap, wc, wc_api, args)
 
 
