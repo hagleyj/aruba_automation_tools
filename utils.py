@@ -67,6 +67,6 @@ class GoogleSheet(object):
         sheet = client.open_by_key(sheet_id)
 
         sheet_instance = sheet.get_worksheet(sheet_num)
-        
+
         # return a list of dictionaries.  Each list entry is a row, with the keys being the column headers
         return sheet_instance.get_all_records()

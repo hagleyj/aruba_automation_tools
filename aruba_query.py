@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 from ipaddress import ip_address, ip_network
-from pickletools import read_unicodestring1
 import requests
+from constants import *
 
 
 # This is a class to store the config data from the conductors.  We only store what is needed
@@ -255,7 +255,7 @@ def get_aruba_config(wc, wc_api, config_class):
     cookie = dict(SESSION=uid)
 
     response = requests.get(
-        url="https://" + wc + ":4343/v1/configuration/object/config?config_path=" + config_path + "&type=committed&UIDARUBA=" + uid,
+        url="https://" + wc + ":4343/v1/configuration/object/config?config_path=" + CONFIG_PATH + "&type=committed&UIDARUBA=" + uid,
         data="",
         headers={},
         cookies=cookie,
