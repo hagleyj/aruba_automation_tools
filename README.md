@@ -33,7 +33,7 @@ This tool will reboot an Aruba AP by ap name or ap mac address
 This tool will rename and regroup APs based on MAC address.  Can be done individually, via csv, or via Google Sheet
 
 ### aruba_wifi_user
-This tool will locate a client by mac address or username.  Also allows you kick the user off the controller
+This tool will locate a client by mac address or username.  Also allows you kick the user off the controller.  It also allows you to add and remove a user from the denylist
 
 ### aruba_backup
 This is a rancid like backup tool for arubaos.  It does not have source control built in
