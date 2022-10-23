@@ -2,117 +2,48 @@
 
 from ipaddress import ip_address, ip_network
 import requests
+from dataclasses import dataclass, field
 from constants import *
 
 
 # This is a class to store the config data from the conductors.  We only store what is needed
+@dataclass
 class ArubaConfig:
-    def __init__(self):
-        self.system_profile = {}
-        self.reg_domain_profile = {}
-        self.radio_prof_b = {}
-        self.radio_prof_a = {}
-        self.radio_prof_6 = {}
-        self.ssid_prof = {}
-        self.ap_group = {}
-        self.ap_name = {}
-        self.virtual_ap = {}
-
-    def updateSysProf(self, system_profile):
-        self.system_profile.update(system_profile)
-
-    def updateRegDomainProf(self, reg_domain_profile):
-        self.reg_domain_profile.update(reg_domain_profile)
-
-    def updateRadioBProf(self, radio_prof_b):
-        self.radio_prof_b.update(radio_prof_b)
-
-    def updateRadioAProf(self, radio_prof_a):
-        self.radio_prof_a.update(radio_prof_a)
-
-    def updateRadio6Prof(self, radio_prof_6):
-        self.radio_prof_6.update(radio_prof_6)
-
-    def updateSSIDProf(self, ssid_prof):
-        self.ssid_prof.update(ssid_prof)
-
-    def updateApGroup(self, ap_group):
-        self.ap_group.update(ap_group)
-
-    def updateAPName(self, ap_name):
-        self.ap_name.update(ap_name)
-
-    def updateVirtualAP(self, virtual_ap):
-        self.virtual_ap.update(virtual_ap)
+    system_profile: dict = field(default_factory=dict)
+    reg_domain_profile: dict = field(default_factory=dict)
+    radio_prof_b: dict = field(default_factory=dict)
+    radio_prof_a: dict = field(default_factory=dict)
+    radio_prof_6: dict = field(default_factory=dict)
+    ssid_prof: dict = field(default_factory=dict)
+    ap_group: dict = field(default_factory=dict)
+    ap_name: dict = field(default_factory=dict)
+    virtual_ap: dict = field(default_factory=dict)
 
 
 # This is a class to store the ap data from the controllers.  This makes it easier to add more data later as we are asked for more data
+@dataclass
 class ArubaAP:
-    def __init__(self, name):
-        # Key off of AP name
-        self.name = name
-
-        # Default the variables
-        self.mac = None
-        self.serial = None
-        self.model = None
-        self.primary = None
-        self.secondary = None
-        self.status = None
-        self.ip = None
-        self.flags = None
-        self.group = None
-        self.bssid = {}
-        self.radio = {}
-        self.lldp0 = {}
-        self.lldp1 = {}
-
-    # Set values
-    def setMac(self, mac):
-        self.mac = mac
-
-    def setSerial(self, serial):
-        self.serial = serial
-
-    def setModel(self, model):
-        self.model = model
-
-    def setPrimary(self, primary):
-        self.primary = primary
-
-    def setSecondary(self, secondary):
-        self.secondary = secondary
-
-    def setStatus(self, status):
-        self.status = status
-
-    def setIP(self, ip):
-        self.ip = ip
-
-    def setFlags(self, flags):
-        self.flags = flags
-
-    def setGroup(self, group):
-        self.group = group
-
-    def setBSSID(self, bssid):
-        self.bssid.update(bssid)
-
-    def setRadio(self, radio):
-        self.radio.update(radio)
-
-    def setLLDP0(self, neighbor, port):
-        self.lldp0 = {neighbor: port}
-
-    def setLLDP1(self, neighbor, port):
-        self.lldp1 = {neighbor: port}
+    name: str
+    mac: str = field(default="")
+    serial: str = field(default="")
+    model: str = field(default="")
+    primary: str = field(default="")
+    secondary: str = field(default="")
+    status: str = field(default="")
+    ip: str = field(default="")
+    flags: str = field(default="")
+    group: str = field(default="")
+    bssid: dict = field(default_factory=dict)
+    radio: dict = field(default_factory=dict)
+    lldp0: dict = field(default_factory=dict)
+    lldp1: dict = field(default_factory=dict)
 
 
+@dataclass
 class ArubaToken:
-    def __init__(self, wc, uid, csrf):
-        self.wc = wc
-        self.uid = uid
-        self.csrf = csrf
+    wc: str
+    uid: str
+    csrf: str
 
 
 def get_aruba_api_token(wc, password, wc_api):
@@ -121,7 +52,6 @@ def get_aruba_api_token(wc, password, wc_api):
     # store the api token in a dict to reference later
     tmp_token = ArubaToken(wc, logindata["_global_result"]["UIDARUBA"], logindata["_global_result"]["X-CSRF-Token"])
     wc_api.setdefault(wc, tmp_token)
-    # wc_api[wc] = logindata["_global_result"]["UIDARUBA"]
 
 
 def get_aruba_db(wc, networks, wc_api, args, ap_list):
@@ -133,16 +63,18 @@ def get_aruba_db(wc, networks, wc_api, args, ap_list):
             if ap["Status"].startswith("Up"):
                 for network in networks:
                     if args.partial.lower() in ap["Name"].lower() or ip_address(ap["IP Address"]) in ip_network(network) or args.all or args.ap.lower() == ap["Name"].lower():
-                        tmp_ap = ArubaAP(ap["Name"])
-                        tmp_ap.setMac(ap["Wired MAC Address"])
-                        tmp_ap.setIP(ap["IP Address"])
-                        tmp_ap.setFlags(ap["Flags"])
-                        tmp_ap.setModel(ap["AP Type"])
-                        tmp_ap.setSerial(ap["Serial #"])
-                        tmp_ap.setPrimary(ap["Switch IP"])
-                        tmp_ap.setSecondary(ap["Standby IP"])
-                        tmp_ap.setStatus(ap["Status"])
-                        tmp_ap.setGroup(ap["Group"])
+                        tmp_ap = ArubaAP(
+                            name=ap["Name"],
+                            mac=ap["Wired MAC Address"],
+                            ip=ap["IP Address"],
+                            flags=ap["Flags"],
+                            model=ap["AP Type"],
+                            serial=ap["Serial #"],
+                            primary=ap["Switch IP"],
+                            secondary=ap["Standby IP"],
+                            status=ap["Status"],
+                            group=ap["Group"],
+                        )
                         ap_list.setdefault(ap["Name"], tmp_ap)
     return ap_list
 
@@ -165,22 +97,22 @@ def get_aruba_eth1(wc, wc_api, ap_list):
             if ap["Interface"] == "eth0":
                 # copy the class, update it, and then put it back
                 tmp = ap_list[ap["AP"]]
-                tmp.setLLDP0(ap["Chassis Name/ID"], ap["Port ID"])
+                tmp.lldp0 = {ap["Chassis Name/ID"]: ap["Port ID"]}
                 ap_list[ap["AP"]] = tmp
             elif eth0 == "up":
                 # copy the class, update it, and then put it back
                 tmp = ap_list[ap["AP"]]
-                tmp.setLLDP0("unknown", "unknown")
+                tmp.lldp0 = {"unknown": "unknown"}
                 ap_list[ap["AP"]] = tmp
             if ap["Interface"] == "eth1":
                 # copy the class, update it, and then put it back
                 tmp = ap_list[ap["AP"]]
-                tmp.setLLDP1(ap["Chassis Name/ID"], ap["Port ID"])
+                tmp.lldp1 = {ap["Chassis Name/ID"]: ap["Port ID"]}
                 ap_list[ap["AP"]] = tmp
             elif eth1 == "up":
                 # copy the class, update it, and then put it back
                 tmp = ap_list[ap["AP"]]
-                tmp.setLLDP1("unknown", "unknown")
+                tmp.lldp1 = {"unknown": "unknown"}
                 ap_list[ap["AP"]] = tmp
     return ap_list
 
@@ -203,7 +135,7 @@ def get_bssid_table(wc, wc_api, ap_list):
                     "max-eirp": ap["ch/EIRP/max-EIRP"].split("/")[2],
                 }
             }
-            tmp.setBSSID(bss_dict)
+            tmp.bssid.update(bss_dict)
             ap_list[ap["ap name"]] = tmp
     return ap_list
 
@@ -231,7 +163,7 @@ def get_radio_database(wc, wc_api, ap_list):
                 radio_dict = {
                     radio_dict_num: {"channel": channel, "power": power, "band": band},
                 }
-                tmp.setRadio(radio_dict)
+                tmp.radio.update(radio_dict)
             ap_list[ap["Name"]] = tmp
     return ap_list
 
@@ -250,12 +182,12 @@ def aruba_show_command(wc, command, wc_api):
     return response.json()
 
 
-def get_aruba_config(wc, wc_api, config_class):
-    uid = wc_api[wc].uid
+def get_aruba_config(dn, wc_api, config_class):
+    # api command to get the config from either AA or Dearborn
+    uid = wc_api[dn].uid
     cookie = dict(SESSION=uid)
-
     response = requests.get(
-        url="https://" + wc + ":4343/v1/configuration/object/config?config_path=" + CONFIG_PATH + "&type=committed&UIDARUBA=" + uid,
+        url="https://" + dn + ":4343/v1/configuration/object/config?config_path=" + CONFIG_PATH + "&type=committed&UIDARUBA=" + uid,
         data="",
         headers={},
         cookies=cookie,
@@ -265,37 +197,37 @@ def get_aruba_config(wc, wc_api, config_class):
         if item == "reg_domain_prof":
             for conf in response.json()["_data"][item]:
                 conf_dict = {conf["profile-name"]: conf}
-                config_class.updateRegDomainProf(conf_dict)
+                config_class.reg_domain_profile.update(conf_dict)
         elif item == "ap_a_radio_prof":
             for conf in response.json()["_data"][item]:
                 conf_dict = {conf["profile-name"]: conf}
-                config_class.updateRadioAProf(conf_dict)
+                config_class.radio_prof_a.update(conf_dict)
         elif item == "ap_g_radio_prof":
             for conf in response.json()["_data"][item]:
                 conf_dict = {conf["profile-name"]: conf}
-                config_class.updateRadioBProf(conf_dict)
+                config_class.radio_prof_b.update(conf_dict)
         elif item == "ap_6ghz_radio_prof":
             for conf in response.json()["_data"][item]:
                 conf_dict = {conf["profile-name"]: conf}
-                config_class.updateRadio6Prof(conf_dict)
+                config_class.radio_prof_6.update(conf_dict)
         elif item == "ssid_prof":
             for conf in response.json()["_data"][item]:
                 conf_dict = {conf["profile-name"]: conf}
-                config_class.updateSSIDProf(conf_dict)
+                config_class.ssid_prof.update(conf_dict)
         elif item == "ap_group":
             for conf in response.json()["_data"][item]:
                 conf_dict = {conf["profile-name"]: conf}
-                config_class.updateApGroup(conf_dict)
+                config_class.ap_group.update(conf_dict)
         elif item == "ap_name":
             for conf in response.json()["_data"][item]:
                 conf_dict = {conf["profile-name"]: conf}
-                config_class.updateAPName(conf_dict)
+                config_class.ap_name.update(conf_dict)
         elif item == "ap_sys_prof":
             for conf in response.json()["_data"][item]:
                 conf_dict = {conf["profile-name"]: conf}
-                config_class.updateSysProf(conf_dict)
+                config_class.system_profile.update(conf_dict)
         elif item == "virtual_ap":
             for conf in response.json()["_data"][item]:
                 conf_dict = {conf["profile-name"]: conf}
-                config_class.updateVirtualAP(conf_dict)
+                config_class.virtual_ap.update(conf_dict)
     return None

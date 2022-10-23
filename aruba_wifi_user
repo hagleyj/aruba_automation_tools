@@ -41,6 +41,32 @@ def aruba_wifi_client(wc, args, wc_api):
         if user_del.ok:
             print("Mac {} removed from {}".format(mac_search, wc))
 
+    if args.dl_add and mac_found_dict[mac_search]:
+        uid = wc_api[wc].uid
+        cookie = dict(SESSION=uid)
+        user_del = requests.post(
+            url="https://" + wc + ":4343/v1/configuration/object/stm_blacklist_client_add?config_path=%2Fmm&UIDARUBA=" + uid,
+            data=json.dumps({"client-mac": mac_search}),
+            headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
+            cookies=cookie,
+            verify=False,
+        )
+        if user_del.ok:
+            print("Mac {} added to denylist on {}".format(mac_search, wc))
+
+    if args.dl_remove and mac_found_dict[mac_search]:
+        uid = wc_api[wc].uid
+        cookie = dict(SESSION=uid)
+        user_del = requests.post(
+            url="https://" + wc + ":4343/v1/configuration/object/stm_blacklist_client_remove?config_path=%2Fmm&UIDARUBA=" + uid,
+            data=json.dumps({"client-mac": mac_search}),
+            headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
+            cookies=cookie,
+            verify=False,
+        )
+        if user_del.ok:
+            print("Mac {} removed from denylist on {}".format(mac_search, wc))
+
 
 def main():
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -66,6 +92,18 @@ def main():
         action="store_true",
         default=False,
         help="Remove the user from the controllers, must use mac address",
+    )
+    parser.add_argument(
+        "--dl_add",
+        action="store_true",
+        default=False,
+        help="Add user to the denylist, must use mac address",
+    )
+    parser.add_argument(
+        "--dl_remove",
+        action="store_true",
+        default=False,
+        help="Remove user from the denylist, must use mac address",
     )
 
     manager = Manager()
