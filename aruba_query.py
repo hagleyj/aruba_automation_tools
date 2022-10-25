@@ -39,6 +39,7 @@ class ArubaAP:
     lldp1: dict = field(default_factory=dict)
 
 
+# Class to store the API token per controller or conductor
 @dataclass
 class ArubaToken:
     wc: str
@@ -46,12 +47,14 @@ class ArubaToken:
     csrf: str
 
 
+# Class to store the inventory of class instantiations for APs and API credentials
 @dataclass
 class ArubaInventory:
     aps: dict = field(default_factory=dict)
     api: dict = field(default_factory=dict)
 
 
+# This class does the queries and the work on the controllers.  You need to make sure that ArubaInventory is called and passed into any functions
 class ArubaQuery:
     def __init__(self) -> None:
         pass
@@ -61,7 +64,7 @@ class ArubaQuery:
         logindata = r.json()
         # store the api token in a dict to reference later
         tmp_token = ArubaToken(wc, logindata["_global_result"]["UIDARUBA"], logindata["_global_result"]["X-CSRF-Token"])
-        inventory.add_api_cred(wc, tmp_token)
+        inventory.api[wc] = tmp_token
 
     def aruba_show_command(self, wc, command, inventory):
         # generic show commands api query
@@ -97,7 +100,7 @@ class ArubaQuery:
                                 status=ap["Status"],
                                 group=ap["Group"],
                             )
-                            inventory.add_ap(ap["Name"], tmp_ap)
+                            inventory.aps[ap["Name"]] = tmp_ap
 
     def get_aruba_eth1(self, wc, inventory):
         command = "show+ap+lldp+neighbors"
