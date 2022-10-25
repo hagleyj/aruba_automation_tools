@@ -3,7 +3,6 @@
 import argparse
 import re
 import urllib3
-from multiprocessing import Manager
 import concurrent.futures
 from utils import *
 from aruba_query import *
@@ -264,9 +263,8 @@ def main():
 
     # set these manually since the APs don't know the info
 
-    manager = Manager()
-    ap_list = manager.dict()
-    wc_api = manager.dict()
+    query = ArubaQuery()
+    inventory = ArubaInventory()
 
     args = parser.parse_args()
 
@@ -283,55 +281,55 @@ def main():
     # get the api token for all controllers
     with concurrent.futures.ThreadPoolExecutor() as executor:
         for wc in MOBILITY_CONTROLLERS:
-            executor.submit(get_aruba_api_token, wc, PASSWORD, wc_api)
+            executor.submit(query.get_aruba_api_token, wc, PASSWORD, inventory)
 
     # get the basic info for aps
     with concurrent.futures.ThreadPoolExecutor() as executor:
         for wc in MOBILITY_CONTROLLERS:
-            executor.submit(get_aruba_db, wc, networks, wc_api, args, ap_list)
+            executor.submit(query.get_aruba_db, wc, networks, inventory, args)
 
     if args.search:
         print("---Aruba AP Search---")
-        for ap in ap_list:
-            print_ap_search(ap_list[ap])
-        print("Total APs Found: " + str(len(ap_list)))
+        for ap in inventory.aps:
+            print_ap_search(inventory.aps[ap])
+        print("Total APs Found: " + str(len(inventory.aps)))
     if args.count:
-        print("Total APs Found: " + str(len(ap_list)))
+        print("Total APs Found: " + str(len(inventory.aps)))
     if args.inactive:
         print("---Inactive Aruba APs---")
-        for ap in ap_list:
-            print_ap_inactive(ap_list[ap])
+        for ap in inventory.aps:
+            print_ap_inactive(inventory.aps[ap])
         print("")
 
     if args.eth1:
         # we get eth1 data separate, and only when needed, since it takes more time
         with concurrent.futures.ThreadPoolExecutor() as executor:
             for wc in MOBILITY_CONTROLLERS:
-                executor.submit(get_aruba_eth1, wc, wc_api, ap_list)
+                executor.submit(query.get_aruba_eth1, wc, inventory)
         print("---Aruba APs with Eth1---")
-        for ap in ap_list:
-            print_eth1(ap, ap_list)
+        for ap in inventory.aps:
+            print_eth1(ap, inventory.aps)
         print("")
 
     if args.radio:
         # we get radio data separate, and only when needed, since it takes more time
         with concurrent.futures.ThreadPoolExecutor() as executor:
             for wc in MOBILITY_CONTROLLERS:
-                executor.submit(get_radio_database, wc, wc_api, ap_list)
+                executor.submit(query.get_radio_database, wc, inventory)
         print("---AP Channel and Power---")
         print("ap_name,model,radio0_band,radio0_channel,radio0_power,radio1_band,radio1_channel,radio1_power,radio2_band,radio2_channel,radio2_power")
-        for ap in ap_list:
-            print_ap_radio(ap, ap_list)
+        for ap in inventory.aps:
+            print_ap_radio(ap, inventory.aps)
         print("")
     if args.bssid:
         # we get bssid data separate, and only when needed, since it takes more time
         with concurrent.futures.ThreadPoolExecutor() as executor:
             for wc in MOBILITY_CONTROLLERS:
-                executor.submit(get_bssid_table, wc, wc_api, ap_list)
+                executor.submit(query.get_bssid_table, wc, inventory)
         if args.bssid:
             print("---Aruba AP BSSID---")
-            for ap in ap_list:
-                print_bssid(ap, ap_list)
+            for ap in inventory.aps:
+                print_bssid(ap, inventory.aps)
             print("")
 
     if args.config or args.groups:
@@ -339,14 +337,14 @@ def main():
         config_class = ArubaConfig()
         with concurrent.futures.ThreadPoolExecutor() as executor:
             for mc in MOBILITY_CONDUCTORS:
-                executor.submit(get_aruba_api_token, mc, PASSWORD, wc_api)
+                executor.submit(query.get_aruba_api_token, mc, PASSWORD, inventory)
         with concurrent.futures.ThreadPoolExecutor() as executor:
             for mc in MOBILITY_CONDUCTORS:
-                executor.submit(get_aruba_config, mc, wc_api, config_class)
+                executor.submit(query.get_aruba_config, mc, inventory, config_class)
 
         if args.config:
-            for ap in ap_list:
-                print_ap_config(ap, ap_list, config_class)
+            for ap in inventory.aps:
+                print_ap_config(ap, inventory.aps, config_class)
         if args.groups:
             print_aruba_groups(config_class)
 

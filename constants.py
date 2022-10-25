@@ -6,7 +6,7 @@ USERNAME = ""
 PASSWORD = ""
 MOBILITY_CONDUCTORS = []
 MOBILITY_CONTROLLERS = []
-#gsheet API settings
+# gsheet API settings
 SERVICE_ACCOUNT_EMAIL = ""
 PROJECT_ID = ""
 CLIENT_ID = ""

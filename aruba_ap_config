@@ -5,17 +5,16 @@ import time
 import json
 import argparse
 import concurrent.futures
-from multiprocessing import Manager
 from netmiko import ConnectHandler
 from constants import *
 from aruba_query import *
 
 
-def set_ap_config(wc, wc_api, args, config_class):
+def set_ap_config(wc, inventory, args, query, config_class):
 
-    get_aruba_config(wc, wc_api, config_class)
+    query.get_aruba_config(wc, inventory, config_class)
 
-    uid = wc_api[wc].uid
+    uid = inventory.api[wc].uid
     cookie = dict(SESSION=uid)
 
     # these commands are work on specific APs
@@ -36,7 +35,7 @@ def set_ap_config(wc, wc_api, args, config_class):
                     ap_ssid_add = requests.post(
                         url="https://" + wc + ":4343/v1/configuration/object/ap_name?config_path=" + CONFIG_PATH + "&UIDARUBA=" + uid,
                         data=json.dumps(ap_ssid_add_data),
-                        headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
+                        headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
                         cookies=cookie,
                         verify=False,
                     )
@@ -55,7 +54,7 @@ def set_ap_config(wc, wc_api, args, config_class):
                     ap_ssid_remove = requests.post(
                         url="https://" + wc + ":4343/v1/configuration/object/ap_name?config_path=" + CONFIG_PATH + "&UIDARUBA=" + uid,
                         data=json.dumps(ap_ssid_remove_data),
-                        headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
+                        headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
                         cookies=cookie,
                         verify=False,
                     )
@@ -81,7 +80,7 @@ def set_ap_config(wc, wc_api, args, config_class):
                 update_essid = requests.post(
                     url="https://" + wc + ":4343/v1/configuration/object/ssid_prof?config_path=" + CONFIG_PATH + "&UIDARUBA=" + uid,
                     data=json.dumps(essid_data),
-                    headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
+                    headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
                     cookies=cookie,
                     verify=False,
                 )
@@ -99,7 +98,7 @@ def set_ap_config(wc, wc_api, args, config_class):
                     update_psk = requests.post(
                         url="https://" + wc + ":4343/v1/configuration/object/ssid_prof?config_path=" + CONFIG_PATH + "&UIDARUBA=" + uid,
                         data=json.dumps(psk_data),
-                        headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
+                        headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
                         cookies=cookie,
                         verify=False,
                     )
@@ -114,7 +113,7 @@ def set_ap_config(wc, wc_api, args, config_class):
     write_memory = ap_ssid_add = requests.post(
         url="https://" + wc + ":4343/v1/configuration/object/write_memory?config_path=" + CONFIG_PATH + "&UIDARUBA=" + uid,
         data={},
-        headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": wc_api[wc].csrf},
+        headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
         cookies=cookie,
         verify=False,
     )
@@ -138,7 +137,7 @@ def aruba_set_raw_config(mc, password, raw_config):
         "banner_timeout": 10,
     }
 
-    cd_command = "cd " + config_path
+    cd_command = "cd " + CONFIG_PATH
 
     ch = ConnectHandler(**conn)
     ch.send_command_timing(cd_command, strip_command=False, strip_prompt=False)
@@ -234,8 +233,8 @@ def main():
     # read CLI into args
     args = parser.parse_args()
 
-    manager = Manager()
-    wc_api = manager.dict()
+    query = ArubaQuery()
+    inventory = ArubaInventory()
 
     if args.raw_config:
         print("Paste in the config and press ctrl-D to end input")
@@ -256,11 +255,11 @@ def main():
         config_class = ArubaConfig()
         with concurrent.futures.ThreadPoolExecutor() as executor:
             for mc in MOBILITY_CONDUCTORS:
-                executor.submit(get_aruba_api_token, mc, PASSWORD, wc_api)
+                executor.submit(query.get_aruba_api_token, mc, PASSWORD, inventory)
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
             for mc in MOBILITY_CONDUCTORS:
-                executor.submit(set_ap_config, mc, wc_api, args, config_class)
+                executor.submit(set_ap_config, mc, inventory, args, query, config_class)
 
 
 if __name__ == "__main__":
