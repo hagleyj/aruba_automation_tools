@@ -70,20 +70,20 @@ def main():
         for wc in MOBILITY_CONTROLLERS:
             executor.submit(query.get_aruba_api_token, wc, PASSWORD, inventory)
 
-    print("mac,user,ip,ssid,bssid,ap,band,role,controller")
-    # with concurrent.futures.ThreadPoolExecutor() as executor:
-    #     for wc in MOBILITY_CONTROLLERS:
-    #         executor.submit(arubapost.aruba_wifi_client, wc, args, inventory, query)
-    for wc in MOBILITY_CONDUCTORS:
-        query.aruba_wifi_client(wc, args, inventory, query)
-
     if args.dl_query:
-        for wc in MOBILITY_CONTROLLERS:
-            print(query.aruba_denylist_query(wc, args, inventory, query))
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for wc in MOBILITY_CONTROLLERS:
+                executor.submit(query.aruba_denylist_query, wc, args, inventory, query)
 
     elif args.dl_add or args.dl_remove:
-        for wc in MOBILITY_CONTROLLERS:
-            arubapost.denylist_add_remove(wc, args, inventory, query)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for wc in MOBILITY_CONTROLLERS:
+                executor.submit(arubapost.denylist_add_remove, wc, args, inventory, query)
+    else:
+        print("mac,user,ip,ssid,bssid,ap,band,role,controller")
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for wc in MOBILITY_CONDUCTORS:
+                executor.submit(query.aruba_wifi_client, wc, args, inventory, query)
 
 
 if __name__ == "__main__":

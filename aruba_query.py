@@ -264,7 +264,9 @@ class ArubaQuery:
                 reason = client["reason"]
                 time = client["block-time(sec)"]
                 remaining = ["remaining time(sec)"]
+                print("{} was block for {}, time remaining {} on {}".format(mac, reason, remaining, wc))
                 return "{} was block for {}, time remaining {} on {}".format(mac, reason, remaining, wc)
+        print("{} is not currently on the denylist on {}".format(mac, wc))
         return "```{} is not currently on the denylist on {}```".format(mac, wc)
 
     def aruba_wifi_client(self, wc, args, inventory, query):
@@ -279,9 +281,16 @@ class ArubaQuery:
         if args.user != "NONE":
             user_search = args.user.lower()
 
+        return_message = ""
         for user in response["Global Users"]:
             if str(user["MAC"]) == mac_search or user_search in str(user["Name"]):
                 print("{},{},{},{},{},{},{},{},{}".format(user["MAC"], user["Name"], user["IP"], user["Essid"], user["Bssid"], user["AP name"], user["Phy"], user["Role"], user["Current switch"]))
+                return_message = (
+                    return_message
+                    + "\n"
+                    + "{},{},{},{},{},{},{},{},{}".format(user["MAC"], user["Name"], user["IP"], user["Essid"], user["Bssid"], user["AP name"], user["Phy"], user["Role"], user["Current switch"])
+                )
+        return return_message
 
 
 class ArubaPost:
@@ -395,6 +404,7 @@ class ArubaPost:
             )
             if reboot_ap.ok:
                 print("Rebooted " + ap_to_reboot)
+                return "Rebooted " + ap_to_reboot
             else:
                 print("API Failure")
 
@@ -412,6 +422,7 @@ class ArubaPost:
             )
             if user_del.ok:
                 print("Mac {} removed from {}".format(mac_search, wc))
+                return "Mac {} removed from {}".format(mac_search, wc)
 
         if args.dl_add:
             uid = inventory.api[wc].uid
@@ -425,6 +436,7 @@ class ArubaPost:
             )
             if user_del.ok:
                 print("Mac {} added to denylist on {}".format(mac_search, wc))
+                return "Mac {} added to denylist on {}".format(mac_search, wc)
 
         if args.dl_remove:
             uid = inventory.api[wc].uid
@@ -438,6 +450,7 @@ class ArubaPost:
             )
             if user_del.ok:
                 print("Mac {} removed from denylist on {}".format(mac_search, wc))
+                return "Mac {} removed from denylist on {}".format(mac_search, wc)
 
     def blink_ap(self, wc, inventory, args, query):
         command = "show+ap+database+long"
@@ -479,6 +492,7 @@ class ArubaPost:
             )
             if blink_ap.ok:
                 print(msg)
+                return msg
             else:
                 print("API Failure")
 

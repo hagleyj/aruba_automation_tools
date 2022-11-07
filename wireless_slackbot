@@ -1,4 +1,4 @@
-# /usr/bin/env python3
+#!/usr/bin/env python3
 
 import json
 from concurrent.futures.process import _threads_wakeups
@@ -16,10 +16,13 @@ from constants import *
 from dataclasses import dataclass, field
 from itertools import chain
 
+requests.packages.urllib3.disable_warnings()
+
 
 @dataclass
 class Args:
     ap: str = field(default="NONE")
+    name: str = field(default="NONE")
     partial: str = field(default="NONE")
     all: bool = False
     mac: str = field(default="NONE")
@@ -27,6 +30,8 @@ class Args:
     dl_add: bool = False
     dl_remove: bool = False
     remove: bool = False
+    blink_on: bool = False
+    blink_off: bool = False
 
 
 def send_mesage_to_channel(client: SocketModeClient, req: SocketModeRequest, return_message: str):
@@ -290,7 +295,7 @@ def process(slack_api_client: SocketModeClient, slack_api_req: SocketModeRequest
             args.mac = slack_api_req.payload["text"]
             args.dl_remove = True
             return_message = ""
-            for mc in MOBILITY_CONDUCTORS:
+            for mc in MOBILITY_CONTROLLERS:
                 return_message = return_message + "\n" + arubapost.denylist_add_remove(mc, args, inventory, query)
             send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
 
@@ -300,7 +305,7 @@ def process(slack_api_client: SocketModeClient, slack_api_req: SocketModeRequest
             args.mac = slack_api_req.payload["text"]
             args.dl_add = True
             return_message = ""
-            for mc in MOBILITY_CONDUCTORS:
+            for mc in MOBILITY_CONTROLLERS:
                 return_message = return_message + "\n" + arubapost.denylist_add_remove(mc, args, inventory, query)
             send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
 
@@ -357,6 +362,64 @@ def process(slack_api_client: SocketModeClient, slack_api_req: SocketModeRequest
             for ap in up_ap_list:
                 return_message = return_message + "\n" + ap
             return_message = return_message + "\n" + "Total APs Up: " + str(len(up_ap_list))
+            send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
+
+        elif slack_api_req.payload["command"] == "/wireless_blink_mac_on":
+            response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
+            slack_api_client.send_socket_mode_response(response)
+            args.mac = slack_api_req.payload["text"]
+            args.blink_on = True
+            return_message = ""
+            for wc in MOBILITY_CONTROLLERS:
+                return_message = return_message + "\n" + arubapost.blink_ap(wc, inventory, args, query)
+            send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
+
+        elif slack_api_req.payload["command"] == "/wireless_blink_mac_off":
+            response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
+            slack_api_client.send_socket_mode_response(response)
+            args.mac = slack_api_req.payload["text"]
+            args.blink_off = True
+            return_message = ""
+            for wc in MOBILITY_CONTROLLERS:
+                return_message = return_message + "\n" + arubapost.blink_ap(wc, inventory, args, query)
+            send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
+
+        elif slack_api_req.payload["command"] == "/wireless_blink_name_on":
+            response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
+            slack_api_client.send_socket_mode_response(response)
+            args.name = slack_api_req.payload["text"]
+            args.blink_on = True
+            return_message = ""
+            for wc in MOBILITY_CONTROLLERS:
+                return_message = return_message + "\n" + arubapost.blink_ap(wc, inventory, args, query)
+            send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
+
+        elif slack_api_req.payload["command"] == "/wireless_blink_name_off":
+            response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
+            slack_api_client.send_socket_mode_response(response)
+            args.name = slack_api_req.payload["text"]
+            args.blink_off = True
+            return_message = ""
+            for wc in MOBILITY_CONTROLLERS:
+                return_message = return_message + "\n" + arubapost.blink_ap(wc, inventory, args, query)
+            send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
+
+        elif slack_api_req.payload["command"] == "/wireless_reboot_ap_name":
+            response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
+            slack_api_client.send_socket_mode_response(response)
+            args.name = slack_api_req.payload["text"]
+            return_message = ""
+            for wc in MOBILITY_CONTROLLERS:
+                return_message = arubapost.reboot_ap(wc, inventory, query, args)
+            send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
+
+        elif slack_api_req.payload["command"] == "/wireless_reboot_ap_mac":
+            response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
+            slack_api_client.send_socket_mode_response(response)
+            args.mac = slack_api_req.payload["text"]
+            return_message = ""
+            for wc in MOBILITY_CONTROLLERS:
+                return_message = arubapost.reboot_ap(wc, inventory, query, args)
             send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
 
 
