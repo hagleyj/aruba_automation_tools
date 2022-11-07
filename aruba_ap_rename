@@ -7,7 +7,7 @@ import json
 import concurrent.futures
 from constants import *
 from utils import GoogleSheet
-from utils import *
+from utils import utils
 from aruba_query import *
 
 requests.packages.urllib3.disable_warnings()
@@ -18,7 +18,7 @@ def parse_csv(csvfile):
     with open(csvfile, "r") as ap_file:
         ap_import_data = csv.DictReader(ap_file, delimiter=",")
         for row in ap_import_data:
-            ap_config_dict[mac_to_colon_separated(row["MAC"]).lower()] = {
+            ap_config_dict[utils.mac_to_colon_separated(row["MAC"]).lower()] = {
                 "name": row["Name"],
                 "group": row["Group"],
             }
@@ -30,7 +30,7 @@ def parse_gsheet(sheetid):
     gsheet_query = GoogleSheet()
     gsheet = gsheet_query.open_google_sheet(sheetid, 0)
     for row in gsheet:
-        ap_config_dict[mac_to_colon_separated(row["MAC"]).lower()] = {
+        ap_config_dict[utils.mac_to_colon_separated(row["MAC"]).lower()] = {
             "name": row["Name"],
             "group": row["Group"],
         }
@@ -97,7 +97,7 @@ def main():
     elif args.gsheet:
         ap_config = parse_gsheet(args.gsheet)
     elif args.mac:
-        ap_config[mac_to_colon_separated(args.mac).lower()] = {"name": args.name, "group": args.group}
+        ap_config[utils.mac_to_colon_separated(args.mac).lower()] = {"name": args.name, "group": args.group}
 
     else:
         print("You need to enter the data for an individual AP or import a CSV")
