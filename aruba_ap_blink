@@ -8,49 +8,7 @@ from utils import *
 from aruba_query import *
 from constants import *
 
-
-def blink_ap(wc, inventory, args, query):
-    command = "show+ap+database+long"
-    response = query.aruba_show_command(wc, command, inventory)
-    # parse json response and update the class
-    if args.name:
-        ap_to_blink = args.name
-        for ap in response["AP Database"]:
-            if ap["Status"].startswith("Up") and ap["Switch IP"] == wc:
-                tmp_ap = ArubaAP(ap["Name"])
-                tmp_ap.mac(ap["Wired MAC Address"])
-                tmp_ap.group(ap["Group"])
-                inventory.aps[ap["Name"]] = tmp_ap
-    elif args.mac:
-        ap_to_blink = mac_to_colon_separated(args.mac).lower()
-        for ap in response["AP Database"]:
-            if ap["Status"].startswith("Up") and ap["Switch IP"] == wc:
-                tmp_ap = ArubaAP(ap["Name"])
-                tmp_ap.mac(ap["Wired MAC Address"])
-                tmp_ap.group(ap["Group"])
-                inventory.aps[ap["Wired MAC Address"]] = tmp_ap
-
-    uid = inventory.api[wc].uid
-    cookie = dict(SESSION=uid)
-
-    if ap_to_blink in inventory.aps.keys():
-        if args.blink_on:
-            blink_data = {"wired-mac": inventory.aps[ap_to_blink].mac, "action_option": "blink"}
-            msg = "Blinking LEDs on " + ap_to_blink
-        elif args.blink_off:
-            blink_data = {"wired-mac": inventory.aps[ap_to_blink].mac, "action_option": "normal"}
-            msg = "LEDs normal on " + ap_to_blink
-        blink_ap = requests.post(
-            url="https://" + wc + ":4343/v1/configuration/object/ap_leds?config_path=%2Fmm&UIDARUBA=" + uid,
-            data=json.dumps(blink_data),
-            headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
-            cookies=cookie,
-            verify=False,
-        )
-        if blink_ap.ok:
-            print(msg)
-        else:
-            print("API Failure")
+requests.packages.urllib3.disable_warnings()
 
 
 def main():
@@ -89,6 +47,7 @@ def main():
 
     query = ArubaQuery()
     inventory = ArubaInventory()
+    arubapost = ArubaPost()
 
     # get the api token for all controllers
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -97,7 +56,7 @@ def main():
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         for wc in MOBILITY_CONTROLLERS:
-            executor.submit(blink_ap, wc, inventory, args, query)
+            executor.submit(arubapost.blink_ap, wc, inventory, args, query)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,8 @@ from utils import GoogleSheet
 from utils import *
 from aruba_query import *
 
+requests.packages.urllib3.disable_warnings()
+
 
 def parse_csv(csvfile):
     ap_config_dict = {}
@@ -33,102 +35,6 @@ def parse_gsheet(sheetid):
             "group": row["Group"],
         }
     return ap_config_dict
-
-
-def rename_ap(wc, inventory, query, args, ap_config):
-    command = "show+ap+database+long"
-    response = query.aruba_show_command(wc, command, inventory)
-    # parse json response and update the class
-    for ap in response["AP Database"]:
-        if ap["Status"].startswith("Up"):
-            tmp_ap = ArubaAP(ap["Name"])
-            tmp_ap.mac = ap["Wired MAC Address"]
-            tmp_ap.group = ap["Group"]
-            inventory.aps[ap["Wired MAC Address"]] = tmp_ap
-
-    uid = inventory.api[wc].uid
-    cookie = dict(SESSION=uid)
-
-    for ap in ap_config:
-        if ap in inventory.aps.keys():
-            if args.force:
-                rename_data = {"wired-mac": inventory.aps[ap].mac, "new-name": ap_config[ap]["name"]}
-                rename_ap = requests.post(
-                    url="https://" + wc + ":4343/v1/configuration/object/ap_rename?config_path=%2Fmm&UIDARUBA=" + uid,
-                    data=json.dumps(rename_data),
-                    headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
-                    cookies=cookie,
-                    verify=False,
-                )
-                if rename_ap.ok:
-                    print("Renamed " + inventory.aps[ap].name + " to " + ap_config[ap]["name"])
-                else:
-                    print("API Failure")
-            else:
-                if ap != "NONE":
-                    # if new name doesn't match existing name, then change it
-                    if inventory.aps[ap].name != ap_config[ap]["name"]:
-                        rename_data = {"wired-mac": inventory.aps[ap].mac, "new-name": ap_config[ap]["name"]}
-                        rename_ap = requests.post(
-                            url="https://" + wc + ":4343/v1/configuration/object/ap_rename?config_path=%2Fmm&UIDARUBA=" + uid,
-                            data=json.dumps(rename_data),
-                            headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
-                            cookies=cookie,
-                            verify=False,
-                        )
-                        if rename_ap.ok:
-                            print("Renamed " + inventory.aps[ap].name + " to " + ap_config[ap]["name"])
-                        else:
-                            print("API Failure")
-
-
-def regroup_ap(wc, inventory, query, args, ap_config):
-    command = "show+ap+database+long"
-    response = query.aruba_show_command(wc, command, inventory)
-    # parse json response and update the class
-    for ap in response["AP Database"]:
-        if ap["Status"].startswith("Up"):
-            tmp_ap = ArubaAP(ap["Name"])
-            tmp_ap.mac = ap["Wired MAC Address"]
-            tmp_ap.group = ap["Group"]
-            inventory.aps[ap["Wired MAC Address"]] = tmp_ap
-
-    uid = inventory.api[wc].uid
-
-    cookie = dict(SESSION=uid)
-
-    for ap in ap_config:
-        # check to make sure the AP is on the conductor
-        if ap in inventory.aps.keys():
-            if args.force:
-                rename_data = {"wired-mac": inventory.aps[ap].mac, "new-group": ap_config[ap]["group"]}
-                rename_ap = requests.post(
-                    url="https://" + wc + ":4343/v1/configuration/object/ap_regroup?config_path=%2Fmm&UIDARUBA=" + uid,
-                    data=json.dumps(rename_data),
-                    headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
-                    cookies=cookie,
-                    verify=False,
-                )
-                if rename_ap.ok:
-                    print("Changed " + inventory.aps[ap].name + " to group " + ap_config[ap]["group"])
-                else:
-                    print("API Failure")
-            else:
-                if ap != "NONE":
-                    # if new group doesn't match existing group, then change it
-                    if inventory.aps[ap].group != ap_config[ap]["group"]:
-                        rename_data = {"wired-mac": inventory.aps[ap].mac, "new-group": ap_config[ap]["group"]}
-                        rename_ap = requests.post(
-                            url="https://" + wc + ":4343/v1/configuration/object/ap_regroup?config_path=%2Fmm&UIDARUBA=" + uid,
-                            data=json.dumps(rename_data),
-                            headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
-                            cookies=cookie,
-                            verify=False,
-                        )
-                        if rename_ap.ok:
-                            print("Changed " + inventory.aps[ap].name + " to group " + ap_config[ap]["group"])
-                        else:
-                            print("API Failure")
 
 
 def main():
@@ -160,16 +66,6 @@ def main():
         help="Enter the sheet id to open, make sure this sheet is shared with the API account",
     )
     parser.add_argument(
-        "--rename",
-        action="store_true",
-        help="Rename APs",
-    )
-    parser.add_argument(
-        "--regroup",
-        action="store_true",
-        help="Regroup APs",
-    )
-    parser.add_argument(
         "--force",
         action="store_true",
         default=False,
@@ -189,6 +85,7 @@ def main():
     ap_config = {}
     query = ArubaQuery()
     inventory = ArubaInventory()
+    arubapost = ArubaPost()
 
     # get the api token for all controllers
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -205,15 +102,9 @@ def main():
     else:
         print("You need to enter the data for an individual AP or import a CSV")
 
-    if args.rename:
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            for mc in MOBILITY_CONDUCTORS:
-                executor.submit(rename_ap, mc, inventory, query, args, ap_config)
-
-    elif args.regroup:
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            for mc in MOBILITY_CONDUCTORS:
-                executor.submit(regroup_ap, mc, inventory, query, args, ap_config)
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for mc in MOBILITY_CONDUCTORS:
+            executor.submit(arubapost.rename_ap, mc, inventory, query, args, ap_config)
 
 
 if __name__ == "__main__":

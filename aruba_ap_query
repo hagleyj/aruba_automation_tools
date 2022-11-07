@@ -8,6 +8,8 @@ from utils import *
 from aruba_query import *
 from constants import *
 
+requests.packages.urllib3.disable_warnings()
+
 
 def print_ap_inactive(ap):
     if "I" in ap.flags:

@@ -5,40 +5,43 @@ from oauth2client.service_account import ServiceAccountCredentials
 from constants import *
 
 
-def dotdec2hex(dotdec):
-    """convert dotted decimal to hex"""
-    hexlist = []
-    for decimal in dotdec.split("."):
-        d = int(decimal)
-        if d < 0 or d > 255:
-            print(dotdec, "is not a valid dotted decimal")
-            return None
-        h = format(d, "02x")
-        hexlist.append(h)
-    hexout = ":".join(hexlist)
-    return hexout
+class utils:
+    def __init__(self) -> None:
+        pass
 
+    def dotdec2hex(dotdec):
+        """convert dotted decimal to hex"""
+        hexlist = []
+        for decimal in dotdec.split("."):
+            d = int(decimal)
+            if d < 0 or d > 255:
+                print(dotdec, "is not a valid dotted decimal")
+                return None
+            h = format(d, "02x")
+            hexlist.append(h)
+        hexout = ":".join(hexlist)
+        return hexout
 
-def hex2dotdec(mac):
-    """convert hex to dotted decimal"""
-    hexlist = []
-    for h in mac.split(":"):
-        d = int(h, 16)
-        hexlist.append(str(d))
-    dotdecout = ".".join(hexlist)
-    return dotdecout
+    def hex2dotdec(mac):
+        """convert hex to dotted decimal"""
+        hexlist = []
+        for h in mac.split(":"):
+            d = int(h, 16)
+            hexlist.append(str(d))
+        dotdecout = ".".join(hexlist)
+        return dotdecout
 
-
-def mac_to_colon_separated(mac):
-    eui_mac = EUI(mac)
-    eui_mac.dialect = mac_unix_expanded
-    return str(eui_mac).upper()
+    def mac_to_colon_separated(mac):
+        eui_mac = EUI(mac)
+        eui_mac.dialect = mac_unix_expanded
+        return str(eui_mac).upper()
 
 
 class GoogleSheet(object):
     def __init__(self):
         self.scope_app = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         self.service_account_email = SERVICE_ACCOUNT_EMAIL
+
         self.project_id = PROJECT_ID
         self.client_id = CLIENT_ID
         self.private_key_id = PRIVATE_KEY_ID

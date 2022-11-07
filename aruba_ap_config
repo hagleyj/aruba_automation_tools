@@ -9,143 +9,7 @@ from netmiko import ConnectHandler
 from constants import *
 from aruba_query import *
 
-
-def set_ap_config(wc, inventory, args, query, config_class):
-
-    query.get_aruba_config(wc, inventory, config_class)
-
-    uid = inventory.api[wc].uid
-    cookie = dict(SESSION=uid)
-
-    # these commands are work on specific APs
-    if args.ap != "NONE":
-        if args.ap_current:
-            if args.ap in config_class.args.ap.keys():
-                print("Unique SSIDs on " + args.ap + ":")
-                for ssid in config_class.args.ap[args.ap]["virtual_ap"]:
-                    print("  " + ssid["profile-name"])
-            else:
-                print(args.ap + " does not have any unique SSIDs configured")
-
-        if args.ap_ssid_add != "NONE":
-            ssid_add_list = args.ap_ssid_add.split(",")
-            for ssid_vap in ssid_add_list:
-                if ssid_vap in config_class.virtual_ap.keys():
-                    ap_ssid_add_data = {"profile-name": args.ap, "virtual_ap": [{"profile-name": ssid_vap}]}
-                    ap_ssid_add = requests.post(
-                        url="https://" + wc + ":4343/v1/configuration/object/ap_name?config_path=" + CONFIG_PATH + "&UIDARUBA=" + uid,
-                        data=json.dumps(ap_ssid_add_data),
-                        headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
-                        cookies=cookie,
-                        verify=False,
-                    )
-                    if ap_ssid_add.ok:
-                        print("{} add to {} on {}".format(ssid_vap, args.ap, wc))
-                    else:
-                        print("API Failure")
-                else:
-                    print(ssid_vap + " is not a valid VAP")
-
-        if args.ap_ssid_remove != "NONE":
-            ssid_remove_list = args.ap_ssid_remove.split(",")
-            for ssid_vap in ssid_remove_list:
-                if ssid_vap in config_class.virtual_ap.keys():
-                    ap_ssid_remove_data = {"profile-name": args.ap, "virtual_ap": [{"profile-name": ssid_vap}], "_action": "delete"}
-                    ap_ssid_remove = requests.post(
-                        url="https://" + wc + ":4343/v1/configuration/object/ap_name?config_path=" + CONFIG_PATH + "&UIDARUBA=" + uid,
-                        data=json.dumps(ap_ssid_remove_data),
-                        headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
-                        cookies=cookie,
-                        verify=False,
-                    )
-                    if ap_ssid_remove.ok:
-                        print("{} removed from {} on {}".format(ssid_vap, args.ap, wc))
-                    else:
-                        print("API Failure")
-                else:
-                    print(ssid_vap + " is not a valid VAP")
-
-    # these commands are work on specific groups
-    if args.ssid != "NONE":
-        if args.ssid in config_class.ssid_prof.keys():
-            if args.ssid_current:
-                print(args.ssid + ":")
-                if "essid" in config_class.ssid_prof[args.ssid].keys():
-                    print("  ESSID: " + config_class.ssid_prof[args.ssid]["essid"]["essid"])
-                if "wpa_passphrase" in config_class.ssid_prof[args.ssid].keys():
-                    print("  PSK: " + config_class.ssid_prof[args.ssid]["wpa_passphrase"]["wpa-passphrase"])
-
-            if args.ssid_essid != "NONE":
-                essid_data = {"profile-name": args.ssid, "essid": {"essid": args.ssid_essid}}
-                update_essid = requests.post(
-                    url="https://" + wc + ":4343/v1/configuration/object/ssid_prof?config_path=" + CONFIG_PATH + "&UIDARUBA=" + uid,
-                    data=json.dumps(essid_data),
-                    headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
-                    cookies=cookie,
-                    verify=False,
-                )
-                if update_essid.ok:
-                    print("Updated ESSID on {} on {}".format(args.ssid, wc))
-                else:
-                    print("API Failure")
-
-            if args.ssid_psk != "NONE":
-                if "wpa_passphrase" in config_class.ssid_prof[args.ssid].keys():
-                    psk_data = {
-                        "profile-name": args.ssid,
-                        "wpa_passphrase": {"wpa-passphrase": args.ssid_psk},
-                    }
-                    update_psk = requests.post(
-                        url="https://" + wc + ":4343/v1/configuration/object/ssid_prof?config_path=" + CONFIG_PATH + "&UIDARUBA=" + uid,
-                        data=json.dumps(psk_data),
-                        headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
-                        cookies=cookie,
-                        verify=False,
-                    )
-                    if update_psk.ok:
-                        print("Updated PSK on {} on {}".format(args.ssid, wc))
-                    else:
-                        print("API Failure")
-
-        else:
-            print("Invalid SSID Profile")
-
-    write_memory = ap_ssid_add = requests.post(
-        url="https://" + wc + ":4343/v1/configuration/object/write_memory?config_path=" + CONFIG_PATH + "&UIDARUBA=" + uid,
-        data={},
-        headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
-        cookies=cookie,
-        verify=False,
-    )
-
-    if args.ssid_list:
-        print("SSIDs")
-        for vap in config_class.virtual_ap:
-            print("- VAP: " + vap)
-            print("  - Profile: " + config_class.virtual_ap[vap]["ssid_prof"]["profile-name"])
-            print("    - essid: " + config_class.ssid_prof[config_class.virtual_ap[vap]["ssid_prof"]["profile-name"]]["essid"]["essid"])
-
-    return None
-
-
-def aruba_set_raw_config(mc, password, raw_config):
-    conn = {
-        "device_type": "aruba_os_ssh",
-        "host": mc,
-        "username": "umnet",
-        "password": password,
-        "banner_timeout": 10,
-    }
-
-    cd_command = "cd " + CONFIG_PATH
-
-    ch = ConnectHandler(**conn)
-    ch.send_command_timing(cd_command, strip_command=False, strip_prompt=False)
-    ch.send_config_set(raw_config, delay_factor=5, cmd_verify=False)
-    time.sleep(3)
-    ch.send_command_timing("write memory", strip_command=False, strip_prompt=False)
-
-    print("Config was pushed to " + mc)
+requests.packages.urllib3.disable_warnings()
 
 
 def print_ssid_config(current_config):
@@ -235,6 +99,7 @@ def main():
 
     query = ArubaQuery()
     inventory = ArubaInventory()
+    arubapost = ArubaPost()
 
     if args.raw_config:
         print("Paste in the config and press ctrl-D to end input")
@@ -244,7 +109,7 @@ def main():
             print("Pushing config....")
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 for mc in MOBILITY_CONDUCTORS:
-                    executor.submit(aruba_set_raw_config, mc, PASSWORD, raw_config)
+                    executor.submit(arubapost.aruba_set_raw_config, mc, PASSWORD, raw_config)
             sys.exit()
         else:
             print("Quiting...")
@@ -259,7 +124,7 @@ def main():
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
             for mc in MOBILITY_CONDUCTORS:
-                executor.submit(set_ap_config, mc, inventory, args, query, config_class)
+                executor.submit(arubapost.set_ap_config, mc, inventory, args, query, config_class)
 
 
 if __name__ == "__main__":

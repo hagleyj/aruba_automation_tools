@@ -8,44 +8,7 @@ from constants import *
 from utils import *
 from aruba_query import *
 
-
-def reboot_ap(wc, inventory, query, args):
-    command = "show+ap+database+long"
-    response = query.aruba_show_command(wc, command, inventory)
-    # parse json response and update the class
-    if args.name:
-        ap_to_reboot = args.name
-        for ap in response["AP Database"]:
-            if ap["Status"].startswith("Up") and ap["Switch IP"] == wc:
-                tmp_ap = ArubaAP(ap["Name"])
-                tmp_ap.mac = ap["Wired MAC Address"]
-                tmp_ap.group = ap["Group"]
-                inventory.aps[ap["Name"]] = tmp_ap
-    elif args.mac:
-        ap_to_reboot = mac_to_colon_separated(args.mac).lower()
-        for ap in response["AP Database"]:
-            if ap["Status"].startswith("Up") and ap["Switch IP"] == wc:
-                tmp_ap = ArubaAP(ap["Name"])
-                tmp_ap.mac = ap["Wired MAC Address"]
-                tmp_ap.group = ap["Group"]
-                inventory.aps[ap["Wired MAC Address"]] = tmp_ap
-
-    uid = inventory.api[wc].uid
-    cookie = dict(SESSION=uid)
-
-    if ap_to_reboot in inventory.aps.keys():
-        reboot_data = {"wired-mac": inventory.aps[ap_to_reboot].mac}
-        reboot_ap = requests.post(
-            url="https://" + wc + ":4343/v1/configuration/object/apboot?config_path=%2Fmm&UIDARUBA=" + uid,
-            data=json.dumps(reboot_data),
-            headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
-            cookies=cookie,
-            verify=False,
-        )
-        if reboot_ap.ok:
-            print("Rebooted " + ap_to_reboot)
-        else:
-            print("API Failure")
+requests.packages.urllib3.disable_warnings()
 
 
 def main():
@@ -72,6 +35,7 @@ def main():
 
     query = ArubaQuery()
     inventory = ArubaInventory()
+    arubapost = ArubaPost()
 
     # get the api token for all controllers
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -80,7 +44,7 @@ def main():
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         for wc in MOBILITY_CONTROLLERS:
-            executor.submit(reboot_ap, wc, inventory, query, args)
+            executor.submit(arubapost.reboot_ap, wc, inventory, query, args)
 
 
 if __name__ == "__main__":

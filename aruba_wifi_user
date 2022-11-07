@@ -8,63 +8,7 @@ from constants import *
 from utils import *
 from aruba_query import *
 
-
-def aruba_wifi_client(wc, args, inventory, query):
-    mac_found_dict = {}
-    mac_search = user_search = "NONE"
-
-    command = "show+global-user-table+list"
-    response = query.aruba_show_command(wc, command, inventory)
-
-    if args.mac != "NONE":
-        mac_search = mac_to_colon_separated(args.mac).lower()
-
-    if args.user != "NONE":
-        user_search = args.user.lower()
-
-    for user in response["Global Users"]:
-        if user["MAC"] == mac_search or user["Name"] == user_search:
-            print("{},{},{},{},{},{},{},{},{}".format(user["MAC"], user["Name"], user["IP"], user["Essid"], user["Bssid"], user["AP name"], user["Phy"], user["Role"], user["Current switch"]))
-            mac_found_dict[user["MAC"]] = True
-
-    if args.remove and mac_found_dict[mac_search]:
-        uid = inventory.api[wc].uid
-        cookie = dict(SESSION=uid)
-        user_del = requests.post(
-            url="https://" + wc + ":4343/v1/configuration/object/aaa_user_delete?config_path=%2Fmm&UIDARUBA=" + uid,
-            data=json.dumps({"macaddr": mac_search}),
-            headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
-            cookies=cookie,
-            verify=False,
-        )
-        if user_del.ok:
-            print("Mac {} removed from {}".format(mac_search, wc))
-
-    if args.dl_add and mac_found_dict[mac_search]:
-        uid = inventory.api[wc].uid
-        cookie = dict(SESSION=uid)
-        user_del = requests.post(
-            url="https://" + wc + ":4343/v1/configuration/object/stm_blacklist_client_add?config_path=%2Fmm&UIDARUBA=" + uid,
-            data=json.dumps({"client-mac": mac_search}),
-            headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
-            cookies=cookie,
-            verify=False,
-        )
-        if user_del.ok:
-            print("Mac {} added to denylist on {}".format(mac_search, wc))
-
-    if args.dl_remove and mac_found_dict[mac_search]:
-        uid = inventory.api[wc].uid
-        cookie = dict(SESSION=uid)
-        user_del = requests.post(
-            url="https://" + wc + ":4343/v1/configuration/object/stm_blacklist_client_remove?config_path=%2Fmm&UIDARUBA=" + uid,
-            data=json.dumps({"client-mac": mac_search}),
-            headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
-            cookies=cookie,
-            verify=False,
-        )
-        if user_del.ok:
-            print("Mac {} removed from denylist on {}".format(mac_search, wc))
+requests.packages.urllib3.disable_warnings()
 
 
 def main():
@@ -99,6 +43,12 @@ def main():
         help="Add user to the denylist, must use mac address",
     )
     parser.add_argument(
+        "--dl_query",
+        action="store_true",
+        default=False,
+        help="Query user to see if they are on the denylist, must use mac address",
+    )
+    parser.add_argument(
         "--dl_remove",
         action="store_true",
         default=False,
@@ -109,17 +59,31 @@ def main():
 
     query = ArubaQuery()
     inventory = ArubaInventory()
+    arubapost = ArubaPost()
 
     # determine dc/mc to use based on args
 
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for wc in MOBILITY_CONDUCTORS:
+            executor.submit(query.get_aruba_api_token, wc, PASSWORD, inventory)
     with concurrent.futures.ThreadPoolExecutor() as executor:
         for wc in MOBILITY_CONTROLLERS:
             executor.submit(query.get_aruba_api_token, wc, PASSWORD, inventory)
 
     print("mac,user,ip,ssid,bssid,ap,band,role,controller")
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    # with concurrent.futures.ThreadPoolExecutor() as executor:
+    #     for wc in MOBILITY_CONTROLLERS:
+    #         executor.submit(arubapost.aruba_wifi_client, wc, args, inventory, query)
+    for wc in MOBILITY_CONDUCTORS:
+        query.aruba_wifi_client(wc, args, inventory, query)
+
+    if args.dl_query:
         for wc in MOBILITY_CONTROLLERS:
-            executor.submit(aruba_wifi_client, wc, args, inventory, query)
+            print(query.aruba_denylist_query(wc, args, inventory, query))
+
+    elif args.dl_add or args.dl_remove:
+        for wc in MOBILITY_CONTROLLERS:
+            arubapost.denylist_add_remove(wc, args, inventory, query)
 
 
 if __name__ == "__main__":

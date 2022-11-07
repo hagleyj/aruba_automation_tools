@@ -1,0 +1,364 @@
+# /usr/bin/env python3
+
+import json
+from concurrent.futures.process import _threads_wakeups
+import concurrent.futures
+from re import I
+from tabnanny import verbose
+from threading import Event
+from slack_sdk.web import WebClient
+from slack_sdk.socket_mode import SocketModeClient
+from slack_sdk.socket_mode.response import SocketModeResponse
+from slack_sdk.socket_mode.request import SocketModeRequest
+from aruba_query import *
+from utils import *
+from constants import *
+from dataclasses import dataclass, field
+from itertools import chain
+
+
+@dataclass
+class Args:
+    ap: str = field(default="NONE")
+    partial: str = field(default="NONE")
+    all: bool = False
+    mac: str = field(default="NONE")
+    user: str = field(default="NONE")
+    dl_add: bool = False
+    dl_remove: bool = False
+    remove: bool = False
+
+
+def send_mesage_to_channel(client: SocketModeClient, req: SocketModeRequest, return_message: str):
+    # Try to send the return message back to the channel it originated from.
+    try:
+        client.web_client.chat_postMessage(channel=req.payload["channel_id"], text=return_message)
+    except Exception as e:
+        print(e)
+
+
+def generate_ap_config(ap, ap_list, config_class):
+    prof_a = eirp_min_a = eirp_max_a = prof_g = eirp_min_g = eirp_max_g = prof_6 = eirp_min_6 = eirp_max_6 = led_mode = reg_prof = sys_prof = "N/A"
+    ssid_dict = {}
+    chan_a = []
+    chan_b = []
+    chan_40_a = []
+    chan_6 = []
+    ssid_dict = {}
+
+    # we need to loop through the group first for the config, and then the ap specific config if it exists
+    if ap_list[ap].group in config_class.ap_group.keys():
+        if "dot11a_prof" in config_class.ap_group[ap_list[ap].group].keys():
+            prof_a = config_class.ap_group[ap_list[ap].group]["dot11a_prof"]["profile-name"]
+            eirp_min_a = config_class.radio_prof_a[prof_a]["eirp_min"]["eirp-min"]
+            eirp_max_a = config_class.radio_prof_a[prof_a]["eirp_max"]["eirp-max"]
+        if "dot11g_prof" in config_class.ap_group[ap_list[ap].group].keys():
+            prof_g = config_class.ap_group[ap_list[ap].group]["dot11g_prof"]["profile-name"]
+            eirp_min_g = config_class.radio_prof_b[prof_g]["eirp_min"]["eirp-min"]
+            eirp_max_g = config_class.radio_prof_b[prof_g]["eirp_max"]["eirp-max"]
+        if "dot11_6ghz_prof" in config_class.ap_group[ap_list[ap].group].keys():
+            prof_6 = config_class.ap_group[ap_list[ap].group]["dot11_6ghz_prof"]["profile-name"]
+            eirp_min_6 = config_class.radio_prof_6[prof_6]["eirp_min"]["eirp-min"]
+            eirp_max_6 = config_class.radio_prof_6[prof_6]["eirp_max"]["eirp-max"]
+        if "ap_sys_prof" in config_class.ap_group[ap_list[ap].group].keys():
+            sys_prof = config_class.ap_group[ap_list[ap].group]["ap_sys_prof"]["profile-name"]
+            led_mode = config_class.system_profile[sys_prof]["led_mode"]["led_mode"]
+        if "reg_domain_prof" in config_class.ap_group[ap_list[ap].group].keys():
+            reg_prof = config_class.ap_group[ap_list[ap].group]["reg_domain_prof"]["profile-name"]
+            if "valid_11b_channel" in config_class.reg_domain_profile[reg_prof].keys():
+                for chan in config_class.reg_domain_profile[reg_prof]["valid_11b_channel"]:
+                    chan_b.append(str(chan["valid-11g-channel"]))
+            if "valid_11a_channel" in config_class.reg_domain_profile[reg_prof].keys():
+                for chan in config_class.reg_domain_profile[reg_prof]["valid_11a_channel"]:
+                    chan_a.append(str(chan["valid-11a-channel"]))
+            if "valid_11a_40mhz_chan_pair_nd" in config_class.reg_domain_profile[reg_prof].keys():
+                for chan in config_class.reg_domain_profile[reg_prof]["valid_11a_40mhz_chan_pair_nd"]:
+                    chan_40_a.append(chan["valid-11a-40mhz-channel-pair"])
+            if "valid_6ghz_channel" in config_class.reg_domain_profile[reg_prof].keys():
+                for chan in config_class.reg_domain_profile[reg_prof]["valid_6ghz_channel"]:
+                    chan_6.append(str(chan["valid-6ghz-channel"]))
+        if "virtual_ap" in config_class.ap_group[ap_list[ap].group].keys():
+            for vap in config_class.ap_group[ap_list[ap].group]["virtual_ap"]:
+                basic_rates_a = list(config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["a_basic_rates"].values())
+                tx_rates_a = list(config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["a_tx_rates"].values())
+                basic_rates_b = list(config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["g_basic_rates"].values())
+                tx_rates_b = list(config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["g_tx_rates"].values())
+                max_clients = config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["max_clients"]["max-clients"]
+                ssid_dict.update(
+                    {vap["profile-name"]: {"basic_rates_a": basic_rates_a, "tx_rates_a": tx_rates_a, "basic_rates_b": basic_rates_b, "tx_rates_b": tx_rates_b, "max_clients": max_clients}}
+                )
+
+    if ap in config_class.ap_name.keys():
+        if "dot11a_prof" in config_class.ap_name[ap_list[ap].name].keys():
+            prof_a = config_class.ap_name[ap_list[ap].name]["dot11a_prof"]["profile-name"]
+            eirp_min_a = config_class.radio_prof_a[prof_a]["eirp_min"]["eirp-min"]
+            eirp_max_a = config_class.radio_prof_a[prof_a]["eirp_max"]["eirp-max"]
+        if "dot11g_prof" in config_class.ap_name[ap_list[ap].name].keys():
+            prof_g = config_class.ap_name[ap_list[ap].name]["dot11g_prof"]["profile-name"]
+            eirp_min_g = config_class.radio_prof_b[prof_g]["eirp_min"]["eirp-min"]
+            eirp_max_g = config_class.radio_prof_b[prof_g]["eirp_max"]["eirp-max"]
+        if "dot11_6ghz_prof" in config_class.ap_name[ap_list[ap].name].keys():
+            prof_6 = config_class.ap_name[ap_list[ap].name]["dot11_6ghz_prof"]["profile-name"]
+            eirp_min_6 = config_class.radio_prof_6[prof_6]["eirp_min"]["eirp-min"]
+            eirp_max_6 = config_class.radio_prof_6[prof_6]["eirp_max"]["eirp-max"]
+        if "ap_sys_prof" in config_class.ap_name[ap_list[ap].name].keys():
+            sys_prof = config_class.ap_name[ap_list[ap].name]["ap_sys_prof"]["profile-name"]
+            led_mode = config_class.system_profile[sys_prof]["led_mode"]["led_mode"]
+        if "reg_domain_prof" in config_class.ap_name[ap_list[ap].name].keys():
+            reg_prof = config_class.ap_name[ap_list[ap].name]["reg_domain_prof"]["profile-name"]
+            if "valid_11b_channel" in config_class.reg_domain_profile[reg_prof].keys():
+                for chan in config_class.reg_domain_profile[reg_prof]["valid_11b_channel"]:
+                    chan_b.append(str(chan["valid-11g-channel"]))
+            if "valid_11a_channel" in config_class.reg_domain_profile[reg_prof].keys():
+                for chan in config_class.reg_domain_profile[reg_prof]["valid_11a_channel"]:
+                    chan_a.append(str(chan["valid-11a-channel"]))
+            if "valid_11a_40mhz_chan_pair_nd" in config_class.reg_domain_profile[reg_prof].keys():
+                for chan in config_class.reg_domain_profile[reg_prof]["valid_11a_40mhz_chan_pair_nd"]:
+                    chan_40_a.append(chan["valid-11a-40mhz-channel-pair"])
+            if "valid_6ghz_channel" in config_class.reg_domain_profile[reg_prof].keys():
+                for chan in config_class.reg_domain_profile[reg_prof]["valid_6ghz_channel"]:
+                    chan_6.append(str(chan["valid-6ghz-channel"]))
+        if "virtual_ap" in config_class.ap_name[ap_list[ap].name].keys():
+            for vap in config_class.ap_name[ap_list[ap].name]["virtual_ap"]:
+                basic_rates_a = list(config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["a_basic_rates"].values())
+                tx_rates_a = list(config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["a_tx_rates"].values())
+                basic_rates_b = list(config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["g_basic_rates"].values())
+                tx_rates_b = list(config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["g_tx_rates"].values())
+                max_clients = config_class.ssid_prof[config_class.virtual_ap[vap["profile-name"]]["ssid_prof"]["profile-name"]]["max_clients"]["max-clients"]
+                ssid_dict.update(
+                    {vap["profile-name"]: {"basic_rates_a": basic_rates_a, "tx_rates_a": tx_rates_a, "basic_rates_b": basic_rates_b, "tx_rates_b": tx_rates_b, "max_clients": max_clients}}
+                )
+
+    message = """```{}: Group - {}, Model - {}, MAC - {}, LED - {}
+   2.4Ghz Profile - {}, 2.4Ghz Channels - {}
+   2.4Ghz EIRP Min - {}, 2.4Ghz EIRP Max - {}
+   5Ghz Profile - {}, 5Ghz Channels - {}
+   5Ghz EIRP Min - {}, 5Ghz EIRP Max - {}
+   6Ghz Profile - {}, 6Ghz Channels - {}
+   6Ghz EIRP Min - {}, 6Ghz EIRP Max - {}```
+    """.format(
+        ap_list[ap].name,
+        ap_list[ap].group,
+        ap_list[ap].model,
+        ap_list[ap].mac,
+        led_mode,
+        prof_g,
+        chan_b,
+        eirp_min_g,
+        eirp_max_g,
+        prof_a,
+        chan_a,
+        eirp_min_a,
+        eirp_max_a,
+        prof_6,
+        chan_6,
+        eirp_min_6,
+        eirp_max_6,
+    )
+    for ssid in ssid_dict:
+        message = message + "      " + ssid + ": " + str(ssid_dict[ssid])
+
+    return message
+
+
+def ap_search(inventory):
+    return_message = ""
+    for ap in inventory.aps:
+        return_message = return_message + "\n{},{},{},{},{},{},{},{},{}".format(
+            inventory.aps[ap].name,
+            inventory.aps[ap].ip,
+            inventory.aps[ap].group,
+            inventory.aps[ap].model,
+            inventory.aps[ap].flags,
+            inventory.aps[ap].status,
+            inventory.aps[ap].primary,
+            inventory.aps[ap].secondary,
+            inventory.aps[ap].mac,
+        )
+    return return_message
+
+
+def query_down_aps(mc, inventory, query):
+    down_aps = []
+    command = "show+ap+database"
+    response = query.aruba_show_command(mc, command, inventory)
+    for ap in response["AP Database"]:
+        if ap["Status"].startswith("Down"):
+            down_aps.append(ap["Name"])
+    return down_aps
+
+
+def query_up_aps(mc, inventory, query):
+    up_aps = []
+    command = "show+ap+database"
+    response = query.aruba_show_command(mc, command, inventory)
+    for ap in response["AP Database"]:
+        if ap["Status"].startswith("Up"):
+            up_aps.append(ap["Name"])
+    return up_aps
+
+
+def main():
+    # Import some environment variables.  These should be included in the .env
+    # file located inside this folder.
+
+    # Initialize SocketModeClient with an app-level token + WebClient
+    slack_api_client = SocketModeClient(
+        # This app-level token is used to establish a connection
+        app_token=SLACK_APP_TOKEN,
+        # The WebClient is used for performing Web API calls in listeners
+        web_client=WebClient(token=SLACK_BOT_TOKEN),
+    )
+    # Add a new listener to receive messages from Slack
+    # You can add more listeners like this if you want to.
+    slack_api_client.socket_mode_request_listeners.append(process)
+
+    # Establish a WebSocket connection to the Socket Mode servers
+    slack_api_client.connect()
+    # Wait for an event...
+    Event().wait()
+
+
+def process(slack_api_client: SocketModeClient, slack_api_req: SocketModeRequest):
+
+    # Check to see if the incomming data was a slash command.  If it was, then
+    # trigger the code for what to do in the event of a slash command.
+    if slack_api_req.type == "slash_commands":
+        query = ArubaQuery()
+        inventory = ArubaInventory()
+        config_class = ArubaConfig()
+        arubapost = ArubaPost()
+
+        args = Args()
+        networks = ["255.255.255.255/32"]
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for mc in MOBILITY_CONDUCTORS:
+                executor.submit(query.get_aruba_api_token, mc, PASSWORD, inventory)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for wc in MOBILITY_CONTROLLERS:
+                executor.submit(query.get_aruba_api_token, wc, PASSWORD, inventory)
+        # Figure out which slash command it was
+        if slack_api_req.payload["command"] == "/ap_name":
+
+            # Slack seems to want a response within 3 seconds.  We should, at the
+            # very least, acknowledege the fact that we received the response.
+            response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
+            slack_api_client.send_socket_mode_response(response)
+            # To see the structure of a slash command input, look here.
+            # https://api.slack.com/apis/connections/socket-implement#command
+
+            # Get the actual text of the payload
+            args.ap = slack_api_req.payload["text"]
+            # Don't trust user input.  Ever.  Do some validation, as not every
+            # field has a usable (or even expected) value or type.
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                for wc in MOBILITY_CONTROLLERS:
+                    executor.submit(query.get_aruba_db, wc, networks, inventory, args)
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                for mc in MOBILITY_CONDUCTORS:
+                    executor.submit(query.get_aruba_config, mc, inventory, config_class)
+
+            for ap in inventory.aps:
+                return_message = generate_ap_config(ap, inventory.aps, config_class)
+
+            # Send out the return message
+            send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
+
+        elif slack_api_req.payload["command"] == "/wireless_client":
+            response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
+            slack_api_client.send_socket_mode_response(response)
+            args.mac = slack_api_req.payload["text"]
+            return_message = ""
+            for mc in MOBILITY_CONDUCTORS:
+                return_message = return_message + "\n" + query.aruba_wifi_client(mc, args, inventory, query)
+            send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
+
+        elif slack_api_req.payload["command"] == "/wireless_user":
+            response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
+            slack_api_client.send_socket_mode_response(response)
+            args.user = slack_api_req.payload["text"]
+            return_message = ""
+            for mc in MOBILITY_CONDUCTORS:
+                return_message = return_message + "\n" + query.aruba_wifi_client(mc, args, inventory, query)
+            send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
+
+        elif slack_api_req.payload["command"] == "/wireless_denylist_remove":
+            response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
+            slack_api_client.send_socket_mode_response(response)
+            args.mac = slack_api_req.payload["text"]
+            args.dl_remove = True
+            return_message = ""
+            for mc in MOBILITY_CONDUCTORS:
+                return_message = return_message + "\n" + arubapost.denylist_add_remove(mc, args, inventory, query)
+            send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
+
+        elif slack_api_req.payload["command"] == "/wireless_denylist_add":
+            response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
+            slack_api_client.send_socket_mode_response(response)
+            args.mac = slack_api_req.payload["text"]
+            args.dl_add = True
+            return_message = ""
+            for mc in MOBILITY_CONDUCTORS:
+                return_message = return_message + "\n" + arubapost.denylist_add_remove(mc, args, inventory, query)
+            send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
+
+        elif slack_api_req.payload["command"] == "/wireless_denylist_query":
+            response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
+            slack_api_client.send_socket_mode_response(response)
+            args.mac = slack_api_req.payload["text"]
+            return_message = ""
+            for wc in MOBILITY_CONTROLLERS:
+                return_message = return_message + "\n" + query.aruba_denylist_query(wc, args, inventory, query)
+            send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
+
+        elif slack_api_req.payload["command"] == "/wireless_ap_status":
+            response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
+            slack_api_client.send_socket_mode_response(response)
+            args.ap = slack_api_req.payload["text"]
+            return_message = ""
+            for mc in MOBILITY_CONDUCTORS:
+                return_message = return_message + "\n" + query.ap_status(wc, args, inventory, query)
+            send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
+
+        elif slack_api_req.payload["command"] == "/wireless_ap_search":
+            response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
+            slack_api_client.send_socket_mode_response(response)
+            args.partial = slack_api_req.payload["text"]
+            return_message = ""
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                for wc in MOBILITY_CONTROLLERS:
+                    executor.submit(query.get_aruba_db, wc, networks, inventory, args)
+            return_message = ap_search(inventory)
+            send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
+
+        elif slack_api_req.payload["command"] == "/wireless_down_aps":
+            response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
+            slack_api_client.send_socket_mode_response(response)
+            return_message = ""
+            down_aps = []
+            for mc in MOBILITY_CONDUCTORS:
+                down_aps.append(query_down_aps(mc, inventory, query))
+            down_ap_list = list(chain(*down_aps))
+            for ap in down_ap_list:
+                return_message = return_message + "\n" + ap
+            return_message = return_message + "\n" + "Total APs Down: " + str(len(down_ap_list))
+            send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
+
+        elif slack_api_req.payload["command"] == "/wireless_up_aps":
+            response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
+            slack_api_client.send_socket_mode_response(response)
+            return_message = ""
+            up_aps = []
+            for mc in MOBILITY_CONDUCTORS:
+                up_aps.append(query_up_aps(mc, inventory, query))
+            up_ap_list = list(chain(*up_aps))
+            for ap in up_ap_list:
+                return_message = return_message + "\n" + ap
+            return_message = return_message + "\n" + "Total APs Up: " + str(len(up_ap_list))
+            send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
+
+
+if __name__ == "__main__":
+    main()
