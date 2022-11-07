@@ -7,8 +7,7 @@ from constants import *
 from utils import utils
 import time
 import json
-
-# from netmiko import ConnectHandler
+from netmiko import ConnectHandler
 
 
 # This is a class to store the config data from the conductors.  We only store what is needed
