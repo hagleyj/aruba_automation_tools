@@ -30,10 +30,11 @@ def parse_gsheet(sheetid):
     gsheet_query = GoogleSheet()
     gsheet = gsheet_query.open_google_sheet(sheetid, 0)
     for row in gsheet:
-        ap_config_dict[utils.mac_to_colon_separated(row["MAC"]).lower()] = {
-            "name": row["Name"],
-            "group": row["Group"],
-        }
+        if row["MAC"] != "" and row["Name"] != "" and row["Group"] != "":
+            ap_config_dict[utils.mac_to_colon_separated(row["MAC"]).lower()] = {
+                "name": row["Name"],
+                "group": row["Group"],
+            }
     return ap_config_dict
 
 
