@@ -460,16 +460,16 @@ class ArubaPost:
             for ap in response["AP Database"]:
                 if ap["Status"].startswith("Up") and ap["Switch IP"] == wc:
                     tmp_ap = ArubaAP(ap["Name"])
-                    tmp_ap.mac(ap["Wired MAC Address"])
-                    tmp_ap.group(ap["Group"])
+                    tmp_ap.mac = ap["Wired MAC Address"]
+                    tmp_ap.group = ap["Group"]
                     inventory.aps[ap["Name"]] = tmp_ap
         elif args.mac:
             ap_to_blink = utils.mac_to_colon_separated(args.mac).lower()
             for ap in response["AP Database"]:
                 if ap["Status"].startswith("Up") and ap["Switch IP"] == wc:
                     tmp_ap = ArubaAP(ap["Name"])
-                    tmp_ap.mac(ap["Wired MAC Address"])
-                    tmp_ap.group(ap["Group"])
+                    tmp_ap.mac = ap["Wired MAC Address"]
+                    tmp_ap.group = ap["Group"]
                     inventory.aps[ap["Wired MAC Address"]] = tmp_ap
 
         uid = inventory.api[wc].uid
