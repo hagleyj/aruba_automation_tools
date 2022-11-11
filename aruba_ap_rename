@@ -31,7 +31,7 @@ def parse_gsheet(sheetid, gsheet_query):
     gsheet = gsheet_query.open_google_sheet(sheetid, 0)
     for row in gsheet:
         if row["MAC"] != "" and row["Name"] != "" and row["Group"] != "":
-            ap_config_dict[utils.mac_to_colon_separated(row["MAC"]).lower()] = {"name": row["Name"], "group": row["Group"], "row": gsheet.index(row) + 2}
+            ap_config_dict[utils.mac_to_colon_separated(row["MAC"]).lower()] = {"name": str(row["Name"]).replace(" ", ""), "group": str(row["Group"]).replace(" ", ""), "row": gsheet.index(row) + 2}
     return ap_config_dict
 
 
