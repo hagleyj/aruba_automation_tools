@@ -73,3 +73,25 @@ class GoogleSheet(object):
 
         # return a list of dictionaries.  Each list entry is a row, with the keys being the column headers
         return sheet_instance.get_all_records()
+
+    def highlight_missing_aps(self, sheet_id, sheet_num, down_aps, up_aps, ap_config):
+        client = self._gsheet_auth()
+        sheet = client.open_by_key(sheet_id)
+        worksheet = sheet.get_worksheet(sheet_num)
+        batch_list_up = []
+        batch_list_down = []
+
+        # for row in
+
+        for ap in up_aps:
+            if ap in ap_config.keys():
+                row = "A{}:D{}".format(str(ap_config[ap]["row"]), str(ap_config[ap]["row"]))
+                batch_list_up.append({"range": row, "format": {"backgroundColor": {"red": 0.0, "green": 1.0, "blue": 0.0}}})
+
+        for ap in down_aps:
+            if ap in ap_config.keys():
+                row = "A{}:D{}".format(str(ap_config[ap]["row"]), str(ap_config[ap]["row"]))
+                batch_list_down.append({"range": row, "format": {"backgroundColor": {"red": 1.0, "green": 0.0, "blue": 0.0}}})
+
+        worksheet.batch_format(batch_list_up)
+        worksheet.batch_format(batch_list_down)

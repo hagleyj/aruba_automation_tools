@@ -185,7 +185,7 @@ def ap_search(inventory):
 
 def query_down_aps(mc, inventory, query):
     down_aps = []
-    command = "show+ap+database"
+    command = "show+ap+database+long"
     response = query.aruba_show_command(mc, command, inventory)
     for ap in response["AP Database"]:
         if ap["Status"].startswith("Down"):
@@ -195,7 +195,7 @@ def query_down_aps(mc, inventory, query):
 
 def query_up_aps(mc, inventory, query):
     up_aps = []
-    command = "show+ap+database"
+    command = "show+ap+database+long"
     response = query.aruba_show_command(mc, command, inventory)
     for ap in response["AP Database"]:
         if ap["Status"].startswith("Up"):

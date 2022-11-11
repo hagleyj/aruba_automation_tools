@@ -34,6 +34,14 @@ def print_eth1(ap, ap_list):
     return None
 
 
+def print_lldp_neighbors(ap, ap_list):
+    if ap_list[ap].lldp0:
+        print("{} is connected to {} port {}".format(ap_list[ap].name, [key for key in ap_list[ap].lldp0.keys()][0], [key for key in ap_list[ap].lldp0.values()][0]))
+    if ap_list[ap].lldp1:
+        print("{} is connected to {} port {}".format(ap_list[ap].name, [key for key in ap_list[ap].lldp1.keys()][0], [key for key in ap_list[ap].lldp1.values()][0]))
+    return None
+
+
 def print_ap_radio(ap, ap_list):
     radio = ap_list[ap].radio
     print(
@@ -248,6 +256,11 @@ def main():
         help="Print bssids per AP",
     )
     parser.add_argument(
+        "--lldp",
+        action="store_true",
+        help="Print AP LLDP Neighbors",
+    )
+    parser.add_argument(
         "--config",
         action="store_true",
         help="Useful Config for the APs/SSIDs assigned to them",
@@ -305,15 +318,19 @@ def main():
             print_ap_inactive(inventory.aps[ap])
         print("")
 
-    if args.eth1:
+    if args.eth1 or args.lldp:
         # we get eth1 data separate, and only when needed, since it takes more time
         with concurrent.futures.ThreadPoolExecutor() as executor:
             for wc in MOBILITY_CONTROLLERS:
                 executor.submit(query.get_aruba_eth1, wc, inventory)
-        print("---Aruba APs with Eth1---")
-        for ap in inventory.aps:
-            print_eth1(ap, inventory.aps)
-        print("")
+        if args.eth1:
+            print("---Aruba APs with Eth1---")
+            for ap in inventory.aps:
+                print_eth1(ap, inventory.aps)
+            print("")
+        if args.lldp:
+            for ap in inventory.aps:
+                print_lldp_neighbors(ap, inventory.aps)
 
     if args.radio:
         # we get radio data separate, and only when needed, since it takes more time

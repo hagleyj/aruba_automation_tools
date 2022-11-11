@@ -10,6 +10,7 @@ from utils import GoogleSheet
 from utils import utils
 from aruba_query import *
 
+
 requests.packages.urllib3.disable_warnings()
 
 
@@ -25,17 +26,33 @@ def parse_csv(csvfile):
     return ap_config_dict
 
 
-def parse_gsheet(sheetid):
+def parse_gsheet(sheetid, gsheet_query):
     ap_config_dict = {}
-    gsheet_query = GoogleSheet()
     gsheet = gsheet_query.open_google_sheet(sheetid, 0)
     for row in gsheet:
         if row["MAC"] != "" and row["Name"] != "" and row["Group"] != "":
-            ap_config_dict[utils.mac_to_colon_separated(row["MAC"]).lower()] = {
-                "name": row["Name"],
-                "group": row["Group"],
-            }
+            ap_config_dict[utils.mac_to_colon_separated(row["MAC"]).lower()] = {"name": row["Name"], "group": row["Group"], "row": gsheet.index(row) + 2}
     return ap_config_dict
+
+
+def query_down_aps(mc, inventory, query):
+    down_aps = []
+    command = "show+ap+database+long"
+    response = query.aruba_show_command(mc, command, inventory)
+    for ap in response["AP Database"]:
+        if ap["Status"].startswith("Down"):
+            down_aps.append(ap["Wired MAC Address"])
+    return down_aps
+
+
+def query_up_aps(mc, inventory, query):
+    up_aps = []
+    command = "show+ap+database+long"
+    response = query.aruba_show_command(mc, command, inventory)
+    for ap in response["AP Database"]:
+        if ap["Status"].startswith("Up"):
+            up_aps.append(ap["Wired MAC Address"])
+    return up_aps
 
 
 def main():
@@ -87,16 +104,24 @@ def main():
     query = ArubaQuery()
     inventory = ArubaInventory()
     arubapost = ArubaPost()
+    gsheet_query = GoogleSheet()
 
     # get the api token for all controllers
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        for mc in MOBILITY_CONDUCTORS:
-            executor.submit(query.get_aruba_api_token, mc, PASSWORD, inventory)
+    # with concurrent.futures.ThreadPoolExecutor() as executor:
+    #     for mc in MOBILITY_CONDUCTORS:
+    #         executor.submit(query.get_aruba_api_token, mc, PASSWORD, inventory)
+
+    for mc in MOBILITY_CONDUCTORS:
+        query.get_aruba_api_token(mc, PASSWORD, inventory)
 
     if args.csv:
         ap_config = parse_csv(args.csv)
     elif args.gsheet:
-        ap_config = parse_gsheet(args.gsheet)
+        ap_config = parse_gsheet(args.gsheet, gsheet_query)
+        for mc in MOBILITY_CONDUCTORS:
+            down_aps = query_down_aps(mc, inventory, query)
+            up_aps = query_up_aps(mc, inventory, query)
+        gsheet_query.highlight_missing_aps(args.gsheet, 0, down_aps, up_aps, ap_config)
     elif args.mac:
         ap_config[utils.mac_to_colon_separated(args.mac).lower()] = {"name": args.name, "group": args.group}
 
