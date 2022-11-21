@@ -12,3 +12,6 @@ PROJECT_ID = ""
 CLIENT_ID = ""
 PRIVATE_KEY_ID = ""
 PRIVATE_KEY = ""
+#Slack Credentials
+SLACK_BOT_TOKEN = ""
+SLACK_APP_TOKEN = ""
