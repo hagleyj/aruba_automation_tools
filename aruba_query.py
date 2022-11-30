@@ -271,23 +271,30 @@ class ArubaQuery:
     def aruba_wifi_client(self, wc, args, inventory, query):
         mac_search = user_search = "NONE"
 
-        command = "show+global-user-table+list"
-        response = self.aruba_show_command(wc, command, inventory)
-
         if args.mac != "NONE":
             mac_search = utils.mac_to_colon_separated(args.mac).lower()
+            command = "show+global-user-table+list+mac-addr+" + mac_search
+            response = self.aruba_show_command(wc, command, inventory)
 
         if args.user != "NONE":
             user_search = args.user.lower()
+            command = "show+global-user-table+list+name+" + user_search
+            response = self.aruba_show_command(wc, command, inventory)
 
         return_message = ""
         for user in response["Global Users"]:
             if str(user["MAC"]) == mac_search or user_search in str(user["Name"]):
-                print("{},{},{},{},{},{},{},{},{}".format(user["MAC"], user["Name"], user["IP"], user["Essid"], user["Bssid"], user["AP name"], user["Phy"], user["Role"], user["Current switch"]))
+                print(
+                    "MAC: {}\nUsername: {}\nIP: {}\nESSID: {}\nBSSID: {}\nAP: {}\nBand: {}\nRole: {}\n Controller: {}".format(
+                        user["MAC"], user["Name"], user["IP"], user["Essid"], user["Bssid"], user["AP name"], user["Phy"], user["Role"], user["Current switch"]
+                    )
+                )
                 return_message = (
                     return_message
                     + "\n"
-                    + "{},{},{},{},{},{},{},{},{}".format(user["MAC"], user["Name"], user["IP"], user["Essid"], user["Bssid"], user["AP name"], user["Phy"], user["Role"], user["Current switch"])
+                    + "```MAC: {}\nUsername: {}\nIP: {}\nESSID: {}\nBSSID: {}\nAP: {}\nBand: {}\nRole: {}\nController: {}```".format(
+                        user["MAC"], user["Name"], user["IP"], user["Essid"], user["Bssid"], user["AP name"], user["Phy"], user["Role"], user["Current switch"]
+                    )
                 )
         return return_message
 
@@ -494,6 +501,21 @@ class ArubaPost:
                 return msg
             else:
                 print("API Failure")
+
+    def remove_wifi_client(self, wc, inventory, args, query):
+        # bounce a device on the controllers.  Mainly for iot devices
+        uid = inventory.api[wc].uid
+        cookie = dict(SESSION=uid)
+        user_del = requests.post(
+            url="https://" + wc + ":4343/v1/configuration/object/aaa_user_delete?config_path=%2Fmm&UIDARUBA=" + uid,
+            data=json.dumps({"macaddr": utils.mac_to_colon_separated(args.mac).lower()}),
+            headers={"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": inventory.api[wc].csrf},
+            cookies=cookie,
+            verify=False,
+        )
+        if user_del.ok:
+            print("Mac {} removed from {}".format(args.mac, wc))
+            return "```Mac {} removed from {}```".format(args.mac, wc)
 
     def set_ap_config(self, wc, inventory, args, query, config_class):
 

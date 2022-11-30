@@ -13,16 +13,16 @@ requests.packages.urllib3.disable_warnings()
 
 def main():
     # CLI parser for the command
-    parser = argparse.ArgumentParser(description="Reboot Aruba AP")
+    parser = argparse.ArgumentParser(description="Blink Aruba AP")
 
     # Get input from CLI
     parser.add_argument(
         "--mac",
-        help="Enter the MAC Address of the AP to reboot",
+        help="Enter the MAC Address of the AP to blink",
     )
     parser.add_argument(
         "--name",
-        help="Enter the AP name to reboot",
+        help="Enter the AP name to blink",
     )
     parser.add_argument(
         "--blink-on",

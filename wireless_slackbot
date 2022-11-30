@@ -15,6 +15,7 @@ from utils import *
 from constants import *
 from dataclasses import dataclass, field
 from itertools import chain
+import syslog
 
 requests.packages.urllib3.disable_warnings()
 
@@ -273,17 +274,30 @@ def process(slack_api_client: SocketModeClient, slack_api_req: SocketModeRequest
 
         elif slack_api_req.payload["command"] == "/wireless_client":
             response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
+            # send a response so slack doesn't timeout
             slack_api_client.send_socket_mode_response(response)
+            # get the text from the slash command
             args.mac = slack_api_req.payload["text"]
+            # build the echo statement to post what the user asked
+            echo_message = "{} asked {} {}\n".format(slack_api_req.payload["user_name"], slack_api_req.payload["command"], slack_api_req.payload["text"])
+            # post what the user asked to the channel
+            send_mesage_to_channel(slack_api_client, slack_api_req, echo_message)
+            # post this to syslog on the system as well
+            syslog.syslog("INFO: Wireless Slackbot: " + echo_message)
+            # start out to build the return_message to send to slack
             return_message = ""
             for mc in MOBILITY_CONDUCTORS:
                 return_message = return_message + "\n" + query.aruba_wifi_client(mc, args, inventory, query)
+            # post the final answer to slack
             send_mesage_to_channel(slack_api_client, slack_api_req, return_message)
 
         elif slack_api_req.payload["command"] == "/wireless_user":
             response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
             slack_api_client.send_socket_mode_response(response)
             args.user = slack_api_req.payload["text"]
+            echo_message = "{} asked {} {}\n".format(slack_api_req.payload["user_name"], slack_api_req.payload["command"], slack_api_req.payload["text"])
+            send_mesage_to_channel(slack_api_client, slack_api_req, echo_message)
+            syslog.syslog("INFO: Wireless Slackbot: " + echo_message)
             return_message = ""
             for mc in MOBILITY_CONDUCTORS:
                 return_message = return_message + "\n" + query.aruba_wifi_client(mc, args, inventory, query)
@@ -293,6 +307,9 @@ def process(slack_api_client: SocketModeClient, slack_api_req: SocketModeRequest
             response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
             slack_api_client.send_socket_mode_response(response)
             args.mac = slack_api_req.payload["text"]
+            echo_message = "{} asked {} {}\n".format(slack_api_req.payload["user_name"], slack_api_req.payload["command"], slack_api_req.payload["text"])
+            send_mesage_to_channel(slack_api_client, slack_api_req, echo_message)
+            syslog.syslog("INFO: Wireless Slackbot: " + echo_message)
             args.dl_remove = True
             return_message = ""
             for mc in MOBILITY_CONTROLLERS:
@@ -303,6 +320,9 @@ def process(slack_api_client: SocketModeClient, slack_api_req: SocketModeRequest
             response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
             slack_api_client.send_socket_mode_response(response)
             args.mac = slack_api_req.payload["text"]
+            echo_message = "{} asked {} {}\n".format(slack_api_req.payload["user_name"], slack_api_req.payload["command"], slack_api_req.payload["text"])
+            send_mesage_to_channel(slack_api_client, slack_api_req, echo_message)
+            syslog.syslog("INFO: Wireless Slackbot: " + echo_message)
             args.dl_add = True
             return_message = ""
             for mc in MOBILITY_CONTROLLERS:
@@ -313,6 +333,9 @@ def process(slack_api_client: SocketModeClient, slack_api_req: SocketModeRequest
             response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
             slack_api_client.send_socket_mode_response(response)
             args.mac = slack_api_req.payload["text"]
+            echo_message = "{} asked {} {}\n".format(slack_api_req.payload["user_name"], slack_api_req.payload["command"], slack_api_req.payload["text"])
+            send_mesage_to_channel(slack_api_client, slack_api_req, echo_message)
+            syslog.syslog("INFO: Wireless Slackbot: " + echo_message)
             return_message = ""
             for wc in MOBILITY_CONTROLLERS:
                 return_message = return_message + "\n" + query.aruba_denylist_query(wc, args, inventory, query)
@@ -322,6 +345,9 @@ def process(slack_api_client: SocketModeClient, slack_api_req: SocketModeRequest
             response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
             slack_api_client.send_socket_mode_response(response)
             args.ap = slack_api_req.payload["text"]
+            echo_message = "{} asked {} {}\n".format(slack_api_req.payload["user_name"], slack_api_req.payload["command"], slack_api_req.payload["text"])
+            send_mesage_to_channel(slack_api_client, slack_api_req, echo_message)
+            syslog.syslog("INFO: Wireless Slackbot: " + echo_message)
             return_message = ""
             for mc in MOBILITY_CONDUCTORS:
                 return_message = return_message + "\n" + query.ap_status(wc, args, inventory, query)
@@ -331,6 +357,9 @@ def process(slack_api_client: SocketModeClient, slack_api_req: SocketModeRequest
             response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
             slack_api_client.send_socket_mode_response(response)
             args.partial = slack_api_req.payload["text"]
+            echo_message = "{} asked {} {}\n".format(slack_api_req.payload["user_name"], slack_api_req.payload["command"], slack_api_req.payload["text"])
+            send_mesage_to_channel(slack_api_client, slack_api_req, echo_message)
+            syslog.syslog("INFO: Wireless Slackbot: " + echo_message)
             return_message = ""
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 for wc in MOBILITY_CONTROLLERS:
@@ -341,6 +370,9 @@ def process(slack_api_client: SocketModeClient, slack_api_req: SocketModeRequest
         elif slack_api_req.payload["command"] == "/wireless_down_aps":
             response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
             slack_api_client.send_socket_mode_response(response)
+            echo_message = "{} asked {}\n".format(slack_api_req.payload["user_name"], slack_api_req.payload["command"])
+            send_mesage_to_channel(slack_api_client, slack_api_req, echo_message)
+            syslog.syslog("INFO: Wireless Slackbot: " + echo_message)
             return_message = ""
             down_aps = []
             for mc in MOBILITY_CONDUCTORS:
@@ -354,6 +386,9 @@ def process(slack_api_client: SocketModeClient, slack_api_req: SocketModeRequest
         elif slack_api_req.payload["command"] == "/wireless_up_aps":
             response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
             slack_api_client.send_socket_mode_response(response)
+            echo_message = "{} asked {}\n".format(slack_api_req.payload["user_name"], slack_api_req.payload["command"])
+            send_mesage_to_channel(slack_api_client, slack_api_req, echo_message)
+            syslog.syslog("INFO: Wireless Slackbot: " + echo_message)
             return_message = ""
             up_aps = []
             for mc in MOBILITY_CONDUCTORS:
@@ -368,6 +403,9 @@ def process(slack_api_client: SocketModeClient, slack_api_req: SocketModeRequest
             response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
             slack_api_client.send_socket_mode_response(response)
             args.mac = slack_api_req.payload["text"]
+            echo_message = "{} asked {} {}\n".format(slack_api_req.payload["user_name"], slack_api_req.payload["command"], slack_api_req.payload["text"])
+            send_mesage_to_channel(slack_api_client, slack_api_req, echo_message)
+            syslog.syslog("INFO: Wireless Slackbot: " + echo_message)
             args.blink_on = True
             return_message = ""
             for wc in MOBILITY_CONTROLLERS:
@@ -378,6 +416,9 @@ def process(slack_api_client: SocketModeClient, slack_api_req: SocketModeRequest
             response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
             slack_api_client.send_socket_mode_response(response)
             args.mac = slack_api_req.payload["text"]
+            echo_message = "{} asked {} {}\n".format(slack_api_req.payload["user_name"], slack_api_req.payload["command"], slack_api_req.payload["text"])
+            send_mesage_to_channel(slack_api_client, slack_api_req, echo_message)
+            syslog.syslog("INFO: Wireless Slackbot: " + echo_message)
             args.blink_off = True
             return_message = ""
             for wc in MOBILITY_CONTROLLERS:
@@ -388,6 +429,9 @@ def process(slack_api_client: SocketModeClient, slack_api_req: SocketModeRequest
             response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
             slack_api_client.send_socket_mode_response(response)
             args.name = slack_api_req.payload["text"]
+            echo_message = "{} asked {} {}\n".format(slack_api_req.payload["user_name"], slack_api_req.payload["command"], slack_api_req.payload["text"])
+            send_mesage_to_channel(slack_api_client, slack_api_req, echo_message)
+            syslog.syslog("INFO: Wireless Slackbot: " + echo_message)
             args.blink_on = True
             return_message = ""
             for wc in MOBILITY_CONTROLLERS:
@@ -398,6 +442,9 @@ def process(slack_api_client: SocketModeClient, slack_api_req: SocketModeRequest
             response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
             slack_api_client.send_socket_mode_response(response)
             args.name = slack_api_req.payload["text"]
+            echo_message = "{} asked {} {}\n".format(slack_api_req.payload["user_name"], slack_api_req.payload["command"], slack_api_req.payload["text"])
+            send_mesage_to_channel(slack_api_client, slack_api_req, echo_message)
+            syslog.syslog("INFO: Wireless Slackbot: " + echo_message)
             args.blink_off = True
             return_message = ""
             for wc in MOBILITY_CONTROLLERS:
@@ -408,6 +455,9 @@ def process(slack_api_client: SocketModeClient, slack_api_req: SocketModeRequest
             response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
             slack_api_client.send_socket_mode_response(response)
             args.name = slack_api_req.payload["text"]
+            echo_message = "{} asked {} {}\n".format(slack_api_req.payload["user_name"], slack_api_req.payload["command"], slack_api_req.payload["text"])
+            send_mesage_to_channel(slack_api_client, slack_api_req, echo_message)
+            syslog.syslog("INFO: Wireless Slackbot: " + echo_message)
             return_message = ""
             for wc in MOBILITY_CONTROLLERS:
                 return_message = arubapost.reboot_ap(wc, inventory, query, args)
@@ -417,6 +467,9 @@ def process(slack_api_client: SocketModeClient, slack_api_req: SocketModeRequest
             response = SocketModeResponse(envelope_id=slack_api_req.envelope_id)
             slack_api_client.send_socket_mode_response(response)
             args.mac = slack_api_req.payload["text"]
+            echo_message = "{} asked {} {}\n".format(slack_api_req.payload["user_name"], slack_api_req.payload["command"], slack_api_req.payload["text"])
+            send_mesage_to_channel(slack_api_client, slack_api_req, echo_message)
+            syslog.syslog("INFO: Wireless Slackbot: " + echo_message)
             return_message = ""
             for wc in MOBILITY_CONTROLLERS:
                 return_message = arubapost.reboot_ap(wc, inventory, query, args)

@@ -118,6 +118,7 @@ def main():
         ap_config = parse_csv(args.csv)
     elif args.gsheet:
         ap_config = parse_gsheet(args.gsheet, gsheet_query)
+        # this section will mark the google sheet green if it is up as expected, red if it is down, and no color if it has not been touched
         for mc in MOBILITY_CONDUCTORS:
             down_aps = query_down_aps(mc, inventory, query)
             up_aps = query_up_aps(mc, inventory, query)
