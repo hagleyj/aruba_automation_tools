@@ -18,10 +18,10 @@ Fill out constants.py with your infomation
 
 ## Tools
 ### aruba_ap_blink
-This tool will turn on and off location blinking on Aruba APs by ap name or ap mac address
+This tool will turn on and off LED location blinking on Aruba APs by ap name or ap mac address
 
 ### aruba_ap_config
-This tool allows for some structured config of arubaos devices, or just raw config to send to all devices
+This tool allows for some structured config of arubaos AP devices, or just raw config to send to all devices
 
 ### aruba_ap_query
 This tool allows for various queries of aruba controller and ap information
